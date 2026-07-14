@@ -121,7 +121,7 @@ function Logo({ size = 'sm' }) {
   return (
     <div className="inline-flex items-center justify-center">
       <img
-        src="/brandimage.png"
+        src="brandimage.png"
         alt="TrueForm AI Logo"
         className={`${h[size]} w-auto object-contain block rounded-md`}
       />
@@ -135,7 +135,7 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
   const isLanding = screen === SCREENS.LANDING;
   return (
     <header
-      className={`flex items-center justify-between px-8 py-4 border-b border-white/5 shrink-0 sticky top-0 z-40 transition-all duration-300
+      className={`flex items-center justify-between px-4 md:px-8 py-3.5 md:py-4 border-b border-white/5 shrink-0 sticky top-0 z-40 transition-all duration-300
         ${ isLanding ? 'bg-transparent' : 'bg-[#0d0e10]/85 backdrop-blur-xl' }`}
       role="banner"
     >
@@ -327,7 +327,7 @@ function HowItWorksSlide() {
     { icon: <Brain className="w-6 h-6" />, title: 'AI Coaching', desc: 'Context-aware feedback fires based on precise anatomical angle thresholds.' },
   ];
   return (
-    <section className="relative z-10 flex flex-col items-center justify-center px-12 py-20 min-h-[90vh] bg-transparent" aria-label="How It Works">
+    <section className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-12 py-16 sm:py-20 min-h-[90vh] bg-transparent" aria-label="How It Works">
       {/* Top gradient divider */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div ref={ref} className="w-full max-w-5xl">
@@ -336,11 +336,11 @@ function HowItWorksSlide() {
             <div className="w-1 h-1 rounded-full bg-[#e2723b]" />
             <span className="text-[#e2723b] text-[10px] uppercase tracking-widest font-bold">How It Works</span>
           </div>
-          <h2 className="text-white text-4xl font-bold mb-3">From camera to coaching<br /><span className="text-white/60 font-normal">in milliseconds</span></h2>
-          <p className="text-white/55 text-base max-w-lg mx-auto">A fully client-side ML pipeline — no server, no latency, no wearables.</p>
+          <h2 className="text-white text-3xl sm:text-4xl font-bold mb-3">From camera to coaching<br /><span className="text-white/60 font-normal">in milliseconds</span></h2>
+          <p className="text-white/55 text-sm sm:text-base max-w-lg mx-auto">A fully client-side ML pipeline — no server, no latency, no wearables.</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {steps.map((s, i) => (
             <div key={i}
                  className={`relative bg-[#111316] border border-white/8 rounded-3xl p-7 transition-all duration-700 ease-out hover:border-white/15 hover:bg-[#141619] group ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}
@@ -401,7 +401,7 @@ function MetricsSlide() {
     { icon: <Brain className="w-4 h-4" />, label: 'AI coach tips', desc: 'Contextual form correction messages' },
   ];
   return (
-    <section className="relative z-10 flex flex-col items-center justify-center px-12 py-20 min-h-[90vh] bg-transparent" aria-label="System Performance">
+    <section className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-12 py-16 sm:py-20 min-h-[90vh] bg-transparent" aria-label="System Performance">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div ref={ref} className="w-full max-w-5xl">
         <div className={`text-center mb-14 transition-all duration-700 ease-out ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
@@ -409,11 +409,11 @@ function MetricsSlide() {
             <div className="w-1 h-1 rounded-full bg-[#e2723b]" />
             <span className="text-[#e2723b] text-[10px] uppercase tracking-widest font-bold">System Performance</span>
           </div>
-          <h2 className="text-white text-4xl font-bold mb-3">Built for precision<br /><span className="text-white/60 font-normal">& real-time speed</span></h2>
-          <p className="text-white/55 text-base max-w-md mx-auto">Powered by TF.js MoveNet SinglePose Lightning. Runs entirely in your browser.</p>
+          <h2 className="text-white text-3xl sm:text-4xl font-bold mb-3">Built for precision<br /><span className="text-white/60 font-normal">& real-time speed</span></h2>
+          <p className="text-white/55 text-sm sm:text-base max-w-md mx-auto">Powered by TF.js MoveNet SinglePose Lightning. Runs entirely in your browser.</p>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {stats.map((s, i) => (
             <div key={i}
                  className={`bg-[#111316] border border-white/8 rounded-2xl p-5 text-center transition-all duration-700 ease-out hover:border-white/15 hover:bg-[#141619] group ${inView ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
@@ -423,13 +423,13 @@ function MetricsSlide() {
                   {s.icon}
                 </div>
               </div>
-              <p className="text-[#e2723b] font-mono font-bold text-3xl mb-1">{s.val}</p>
-              <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">{s.label}</p>
+              <p className="text-[#e2723b] font-mono font-bold text-2xl sm:text-3xl mb-1">{s.val}</p>
+              <p className="text-white/50 text-[10px] sm:text-xs uppercase tracking-wider font-semibold">{s.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className={`bg-[#111316] border border-white/8 rounded-3xl p-7 transition-all duration-700 ease-out ${inView ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'}`}
                style={{ transitionDelay: '500ms' }}>
             <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-1">Component Accuracy</p>
@@ -518,7 +518,7 @@ function LandingScreen({ onStart, mode }) {
   }, []);
   return (
     <div className="relative z-10 flex-1 overflow-y-auto scroll-smooth">
-      <section className="relative flex flex-col items-center justify-center min-h-[88vh] overflow-hidden px-8">
+      <section className="relative flex flex-col items-center justify-center min-h-[88vh] overflow-hidden px-4 sm:px-8">
 
         <div className="relative z-10 text-center" style={{ mixBlendMode: 'normal', background: 'transparent' }}>
           <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#e2723b]/45 bg-[#e2723b]/12 mb-7 transition-all duration-1000 ease-out ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -532,7 +532,7 @@ function LandingScreen({ onStart, mode }) {
             <Logo size="lg" />
           </div>
 
-          <h1 className={`text-5xl font-bold text-white leading-tight mb-4 max-w-2xl mx-auto transition-all duration-1000 ease-out delay-200 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          <h1 className={`text-3xl sm:text-5xl font-bold text-white leading-tight mb-4 max-w-2xl mx-auto transition-all duration-1000 ease-out delay-200 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             {mode === 'mobility' ? (
               <>Track Your Motion.<br /><span className="text-[#e2723b]">Perfect Your Form.</span></>
             ) : (
@@ -1079,10 +1079,10 @@ function TrackingScreen({ exercise, onFinish }) {
   };
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col gap-4 px-6 py-5 min-h-0 overflow-hidden select-none">
-      <div className="flex gap-4 flex-1 min-h-0">
+    <div className="relative z-10 flex-1 flex flex-col gap-4 px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto md:overflow-hidden select-none">
+      <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
         {/* Webcam Display */}
-        <div className="relative bg-black rounded-[1.8rem] border border-white/8 overflow-hidden" style={{ flex: '0 0 58%' }}>
+        <div className="relative bg-black rounded-[1.8rem] border border-white/8 overflow-hidden w-full md:w-[58%] shrink-0 aspect-[4/3] md:aspect-auto min-h-[240px] md:min-h-0">
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
@@ -1132,7 +1132,7 @@ function TrackingScreen({ exercise, onFinish }) {
       </div>
 
       {/* Stats pills */}
-      <div className="grid grid-cols-4 gap-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
         {[
           { label: 'Calculated Angle', val: `${uiAngle.toFixed(1)}°` },
           { label: 'Movement Speed', val: `${uiVel.toFixed(1)}°/s` },
@@ -1146,8 +1146,8 @@ function TrackingScreen({ exercise, onFinish }) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-5 bg-[#111316] border border-white/8 rounded-2xl px-5 py-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-5 bg-[#111316] border border-white/8 rounded-2xl px-5 py-3">
           <div className="flex items-center gap-2">
             <span className="text-white/45 text-xs">Repetitions</span>
             <span className="text-emerald-400 font-mono font-bold text-xl leading-none">{uiReps}</span>
@@ -1164,7 +1164,7 @@ function TrackingScreen({ exercise, onFinish }) {
           </div>
         </div>
         <button onClick={handleFinish}
-          className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-[#e2723b] hover:bg-[#d15f2a] text-white font-semibold text-sm transition-all shadow-lg shadow-[#e2723b]/20 cursor-pointer">
+          className="flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-[#e2723b] hover:bg-[#d15f2a] text-white font-semibold text-sm transition-all shadow-lg shadow-[#e2723b]/20 cursor-pointer w-full sm:w-auto">
           <StopCircle className="w-4 h-4" /> Finish Session
         </button>
       </div>
@@ -1511,7 +1511,7 @@ function NutritionScreen() {
   }, []);
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col gap-6 px-8 py-6 overflow-y-auto max-w-6xl mx-auto w-full select-none">
+    <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 py-4 md:py-6 overflow-y-auto max-w-6xl mx-auto w-full select-none">
       
       {/* Upper Grid: Daily Totals */}
       <div className="bg-[#111316] border border-white/8 rounded-3xl p-6">
@@ -1527,12 +1527,12 @@ function NutritionScreen() {
           )}
         </div>
 
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {/* Calories Progress Ring / Bar */}
           <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Calories Intake</p>
-              <p className="text-white font-mono text-3xl font-bold">{totals.calories} <span className="text-sm text-white/40">/ {DAILY_TARGETS.calories} kcal</span></p>
+              <p className="text-white font-mono text-2xl sm:text-3xl font-bold">{totals.calories} <span className="text-xs sm:text-sm text-white/40">/ {DAILY_TARGETS.calories} kcal</span></p>
             </div>
             <div className="mt-4">
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -1545,7 +1545,7 @@ function NutritionScreen() {
           <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Carbohydrates</p>
-              <p className="text-emerald-400 font-mono text-2xl font-bold">{totals.carbs.toFixed(1)}g <span className="text-xs text-white/40">/ {DAILY_TARGETS.carbs}g</span></p>
+              <p className="text-emerald-400 font-mono text-xl sm:text-2xl font-bold">{totals.carbs.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.carbs}g</span></p>
             </div>
             <div className="mt-4">
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -1558,7 +1558,7 @@ function NutritionScreen() {
           <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Protein</p>
-              <p className="text-[#e2723b] font-mono text-2xl font-bold">{totals.protein.toFixed(1)}g <span className="text-xs text-white/40">/ {DAILY_TARGETS.protein}g</span></p>
+              <p className="text-[#e2723b] font-mono text-xl sm:text-2xl font-bold">{totals.protein.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.protein}g</span></p>
             </div>
             <div className="mt-4">
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -1571,7 +1571,7 @@ function NutritionScreen() {
           <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Fats</p>
-              <p className="text-blue-400 font-mono text-2xl font-bold">{totals.fat.toFixed(1)}g <span className="text-xs text-white/40">/ {DAILY_TARGETS.fat}g</span></p>
+              <p className="text-blue-400 font-mono text-xl sm:text-2xl font-bold">{totals.fat.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.fat}g</span></p>
             </div>
             <div className="mt-4">
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -1583,10 +1583,10 @@ function NutritionScreen() {
       </div>
 
       {/* Lower Workspace: Camera/Upload (Left) + Results/Logs (Right) */}
-      <div className="grid grid-cols-12 gap-6 flex-1 items-start min-h-0">
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 flex-1 items-start min-h-0">
         
         {/* Left: Input scanner */}
-        <div className="col-span-7 bg-[#111316] border border-white/8 rounded-3xl p-6 flex flex-col gap-5 min-h-[500px]">
+        <div className="w-full lg:col-span-7 bg-[#111316] border border-white/8 rounded-3xl p-4 md:p-6 flex flex-col gap-5 min-h-0 lg:min-h-[500px]">
           <div>
             <h3 className="text-white font-bold text-lg">Scan Meal</h3>
             <p className="text-white/50 text-xs">Snap a picture with your webcam or upload a photo to identify nutrients.</p>
@@ -1711,7 +1711,7 @@ function NutritionScreen() {
         </div>
 
         {/* Right: Results + Daily Logs */}
-        <div className="col-span-5 flex flex-col gap-5 min-h-[500px]">
+        <div className="w-full lg:col-span-5 flex flex-col gap-5 min-h-0 lg:min-h-[500px]">
           
           {/* Classification Results */}
           {scanResult && (
@@ -1730,19 +1730,19 @@ function NutritionScreen() {
               {/* Nutrients Grid */}
               <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[8px] uppercase tracking-wider font-semibold mb-0.5">Calories</p>
+                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Calories</p>
                   <p className="text-white font-mono font-bold text-sm">{scanResult.calories}</p>
                 </div>
                 <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[8px] uppercase tracking-wider font-semibold mb-0.5">Carbs</p>
+                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Carbs</p>
                   <p className="text-emerald-400 font-mono font-bold text-sm">{scanResult.carbs}g</p>
                 </div>
                 <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[8px] uppercase tracking-wider font-semibold mb-0.5">Protein</p>
+                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Protein</p>
                   <p className="text-[#e2723b] font-mono font-bold text-sm">{scanResult.protein}g</p>
                 </div>
                 <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[8px] uppercase tracking-wider font-semibold mb-0.5">Fats</p>
+                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Fats</p>
                   <p className="text-blue-400 font-mono font-bold text-sm">{scanResult.fat}g</p>
                 </div>
               </div>
