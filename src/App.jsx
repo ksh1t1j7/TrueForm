@@ -7,6 +7,8 @@ import {
   Camera, Upload, Plus, Trash2, Apple
 } from 'lucide-react';
 
+import SplashCursor from './SplashCursor';
+
 // TensorFlow.js from Global Scope (loaded via CDN in index.html to bypass Vite bundling errors)
 const tf = window.tf;
 const poseDetection = window.poseDetection;
@@ -2162,8 +2164,19 @@ export default function App() {
       {/* ── WebGL moody fluid shader — z-index: -2 ── */}
       <FluidShaderBackground />
 
-      {/* ── Premium fluid cursor — zero re-renders ── */}
+      {/* ── Premium fluid cursor blob + dot — z:9999/10000 ── */}
       <FluidCursor />
+
+      {/* ── SplashCursor: Navier-Stokes fluid trail — z:9998 ── */}
+      <SplashCursor
+        DENSITY_DISSIPATION={4.0}
+        VELOCITY_DISSIPATION={2.5}
+        SPLAT_RADIUS={0.22}
+        SPLAT_FORCE={5500}
+        CURL={4}
+        RAINBOW_MODE={true}
+        TRANSPARENT={true}
+      />
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
