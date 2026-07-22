@@ -293,6 +293,39 @@ function playChime() {
   } catch (_) {}
 }
 
+/* ─── Feedback Inference Engine ───────────────────────────── */
+function evaluateForm(currentAngle, targetAngle, movementSpeed, phase) {
+  const normPhase = (phase || '').toLowerCase();
+
+  // 1. Exceedingly high speed during return (negative) phase
+  if (normPhase === 'return' && movementSpeed > 90) {
+    return "Too fast. Control the negative phase.";
+  }
+
+  // 2. Smooth movement hitting target angle
+  if (currentAngle >= targetAngle - 5 && movementSpeed <= 120) {
+    return "Perfect form. Keep this rhythm.";
+  }
+
+  // 3. Incomplete rep (below target angle during extension/peak movement)
+  if (currentAngle < targetAngle && currentAngle >= targetAngle * 0.4) {
+    return "Incomplete rep. Push for full Range of Motion.";
+  }
+
+  // Neutral position default
+  return "Neutral position. Begin your movement.";
+}
+
+function getFeedbackColor(feedback) {
+  if (feedback.includes("Too fast") || feedback.includes("Incomplete rep")) {
+    return "text-[#e2723b]";
+  }
+  if (feedback.includes("Perfect form")) {
+    return "text-emerald-400";
+  }
+  return "text-slate-300";
+}
+
 /* ─── AI Coach logic ───────────────────────────────────────── */
 function getCoachMsg(angle, velocity, isFlexing, formScore, isMoving) {
   if (!isMoving) return { msg: 'Waiting for movement', sub: 'Position yourself and start the exercise.', type: 'idle' };
@@ -1059,6 +1092,13 @@ function SemicircleGauge({ angle, tMin, tMax }) {
 
 /* ─── AI Coach Panel ────────────────────────────────────────── */
 function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCount, peakAngle, exercise }) {
+  const targetAngle = exercise?.targetRange?.max || 90;
+  const phase = isFlexing ? 'extension' : 'return';
+  const liveFeedback = isMoving
+    ? evaluateForm(angle, targetAngle, velocity, phase)
+    : "Neutral position. Begin your movement.";
+  const feedbackColor = getFeedbackColor(liveFeedback);
+
   const coach = getCoachMsg(angle, velocity, isFlexing, formScore, isMoving);
   const st = {
     good: { bg: 'bg-emerald-500/10 border-emerald-500/25', text: 'text-emerald-400', dot: 'bg-emerald-400' },
@@ -1091,7 +1131,7 @@ function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCoun
 
       <div className={`rounded-2xl border p-4 ${st.bg}`}>
         <p className={`font-bold text-base mb-1 ${st.text}`}>{coach.msg}</p>
-        <p className="text-white/60 text-xs leading-relaxed">{coach.sub}</p>
+        <p className={`text-xs leading-relaxed font-semibold transition-colors duration-200 ${feedbackColor}`}>{liveFeedback}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
