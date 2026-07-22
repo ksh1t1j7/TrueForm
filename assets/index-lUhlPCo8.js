@@ -166,12 +166,6 @@ Error generating stack: `+e.message+`
     return fract(p.x * p.y);
   }
 
-  // pixel-mapped grain hash — sin/dot on absolute screen coords
-  // Operates on gl_FragCoord.xy so grain is always 1:1, never scaled
-  float random(vec2 st) {
-    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
-  }
-
   // smooth value noise
   float noise(vec2 p) {
     vec2 i = floor(p);
@@ -233,12 +227,6 @@ Error generating stack: `+e.message+`
     float maxL = max(col.r, max(col.g, col.b));
     if (maxL > 0.55) col *= 0.55 / maxL;
 
-    // ── cinematic film grain — pixel-perfect, zero Moiré ────────
-    // random() uses gl_FragCoord.xy (absolute pixels, not UVs) so
-    // grain is always rendered at native 1:1 screen resolution.
-    // Per-frame time offset animates the static each frame.
-    float grain = (random(gl_FragCoord.xy + fract(u_time * 37.0)) - 0.5) * 0.10;
-    col = clamp(col + grain, 0.0, 1.0);
 
     // ── radial vignette — firm pull to obsidian at edges ──────
     vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
