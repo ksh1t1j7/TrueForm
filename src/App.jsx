@@ -25,24 +25,27 @@ const FRAG_SRC = `
   uniform float u_time;
   uniform vec2  u_res;
 
-  // ── MOODY EARTHY PALETTE ─ max luminance anchored at 0.55 ─────
-  // deep burnt-orange  #9a3412  → (0.604, 0.204, 0.071)
-  // dark bronze        #78350f  → (0.471, 0.208, 0.059)
-  // muted olive        #3f4a3c  → (0.247, 0.290, 0.235)
-  // dark terracotta    #7f1d1d  → (0.498, 0.114, 0.114)
-  // obsidian base      #0d0e10  → (0.051, 0.055, 0.063)
+  // ── "NEBULA" EARTHY SPECTRUM ─ Anchored at deep warm obsidian ─────
+  // Core Highlight: Dusty Terracotta #c25c30 → vec3(0.761, 0.361, 0.188)
+  // Mid-tones: Deep Burnt Sienna    #7a2e15 → vec3(0.478, 0.180, 0.082)
+  // Shadows/Edges: Dark Espresso    #261007 → vec3(0.149, 0.063, 0.027)
+  // Deep Warm Base: Warm Obsidian   #0a0604 → vec3(0.039, 0.024, 0.016)
 
-  vec3 C_BRONZE = vec3(0.604, 0.204, 0.071);
-  vec3 C_AMBER  = vec3(0.471, 0.208, 0.059);
-  vec3 C_OLIVE  = vec3(0.247, 0.290, 0.235);
-  vec3 C_TERRA  = vec3(0.498, 0.114, 0.114);
-  vec3 C_DARK   = vec3(0.051, 0.055, 0.063);
+  vec3 C_DARK     = vec3(0.039, 0.024, 0.016);
+  vec3 C_TERRA    = vec3(0.761, 0.361, 0.188);
+  vec3 C_SIENNA   = vec3(0.478, 0.180, 0.082);
+  vec3 C_ESPRESSO = vec3(0.149, 0.063, 0.027);
 
-  // fast hash (used by value-noise / fbm only)
+  // fast hash for fbm noise
   float hash(vec2 p) {
     p = fract(p * vec2(127.1, 311.7));
     p += dot(p, p + 17.5);
     return fract(p.x * p.y);
+  }
+
+  // high-frequency pixel noise for tactile matte finish (prevents banding)
+  float random(vec2 st) {
+    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
   }
 
   // smooth value noise
@@ -57,7 +60,7 @@ const FRAG_SRC = `
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
   }
 
-  // 3-octave fbm
+  // 3-octave fbm for volumetric nebula
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
@@ -73,43 +76,42 @@ const FRAG_SRC = `
     vec2 uv = gl_FragCoord.xy / u_res;
     uv.x *= u_res.x / u_res.y;
 
-    // ── UV zoom: blobs span full viewport, not clustered ──────
-    uv *= 0.75;
+    // Localize nebula drift toward center-right
+    uv -= vec2(0.18, 0.05);
+    uv *= 0.65;
 
-    // ── slow, liquid time drive ──────────────────────────────
-    float t = u_time * 0.050;
+    // Slow, organic time drive
+    float t = u_time * 0.035;
 
-    // ── double domain-warp (5× amplitude for wide sweeps) ────
+    // Double domain-warp for soft volumetric smoke folds
     vec2 q = vec2(fbm(uv + vec2(0.00, t)),
-                  fbm(uv + vec2(5.20, 1.30 + t * 0.70)));
-    vec2 r = vec2(fbm(uv + 5.0 * q + vec2(1.70, 9.20 + t * 0.50)),
-                  fbm(uv + 5.0 * q + vec2(8.30, 2.80 + t * 0.30)));
-    float f = fbm(uv + 5.0 * r);
+                  fbm(uv + vec2(5.20, 1.30 + t * 0.60)));
+    vec2 r = vec2(fbm(uv + 4.5 * q + vec2(1.70, 9.20 + t * 0.40)),
+                  fbm(uv + 4.5 * q + vec2(8.30, 2.80 + t * 0.25)));
+    float f = fbm(uv + 4.5 * r);
 
-    // ── blob weights — mix() keeps colours muted, not additive
-    float wA = smoothstep(0.38, 0.72, f);               // bronze bloom
-    float wB = smoothstep(0.42, 0.76, q.x + 0.4 * f);  // amber fade
-    float wC = smoothstep(0.30, 0.68, r.y + 0.3 * f);  // olive shadow
-    float wD = smoothstep(0.44, 0.78, q.y + 0.5 * f);  // terracotta
+    // Soft feathered volumetric weights
+    float wA = smoothstep(0.25, 0.80, f);
+    float wB = smoothstep(0.30, 0.82, q.x + 0.35 * f);
+    float wC = smoothstep(0.20, 0.75, r.y + 0.30 * f);
 
-    // ── sequential mix — colours blend INTO each other ────────
+    // Sequential mix into warm obsidian base
     vec3 col = C_DARK;
-    col = mix(col, C_BRONZE, wA * 0.82);
-    col = mix(col, C_AMBER,  wB * 0.60);
-    col = mix(col, C_OLIVE,  wC * 0.45);
-    col = mix(col, C_TERRA,  wD * 0.55);
+    col = mix(col, C_ESPRESSO, wA * 0.75);
+    col = mix(col, C_SIENNA,   wB * 0.55);
+    col = mix(col, C_TERRA,    wC * 0.45);
 
-    // ── mild contrast curve (lifts darks slightly) ─────────────
-    col = col * (1.12 - col * 0.22);
-
-    // ── luminance hard-cap at 0.55 (prevents any blowout) ─────
+    // Exposure hard-cap at 0.45 (zero light blowout / zero pure white)
     float maxL = max(col.r, max(col.g, col.b));
-    if (maxL > 0.55) col *= 0.55 / maxL;
+    if (maxL > 0.45) col *= 0.45 / maxL;
 
+    // Tactile matte film grain overlay (12% amplitude, non-repeating)
+    float matteNoise = (random(gl_FragCoord.xy + fract(u_time * 19.0)) - 0.5) * 0.035;
+    col = clamp(col + matteNoise, 0.0, 1.0);
 
-    // ── radial vignette — firm pull to obsidian at edges ──────
+    // Vignette: gentle pull to warm obsidian edges
     vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
-    float vig = 1.0 - smoothstep(0.28, 0.82, length(cv) * 1.30);
+    float vig = 1.0 - smoothstep(0.22, 0.85, length(cv) * 1.25);
     col *= vig;
 
     gl_FragColor = vec4(col, 1.0);
@@ -205,6 +207,7 @@ function FluidShaderBackground() {
         zIndex: -2,
         pointerEvents: 'none',
         display: 'block',
+        opacity: 0.55,
       }}
     />
   );
@@ -2092,7 +2095,7 @@ export default function App() {
   };
 
   return (
-    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#0d0e10' }}>
+    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#0a0604' }}>
       {/* ── WebGL moody fluid shader — z-index: -2 ── */}
       <FluidShaderBackground />
 
