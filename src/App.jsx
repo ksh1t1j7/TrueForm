@@ -23,18 +23,21 @@ const FRAG_SRC = `
   uniform float u_time;
   uniform vec2  u_res;
 
-  // ── palette ──────────────────────────────────────────────────
-  // sage green  rgb(160,224,171) → #a0e0ab
-  // amber       rgb(255,172,46)  → #ffac2e
-  // oxblood     rgb(165,45,37)   → #a52d25
-  // near-black  rgb(8,8,10)      → base canvas
+  // ── VIVID 5-STOP PALETTE ──────────────────────────────────────
+  // amber-gold   #d97706  → (0.851, 0.467, 0.024)
+  // terracotta   #e2723b  → (0.886, 0.447, 0.231)
+  // warm-gold    #f59e0b  → (0.961, 0.620, 0.043)
+  // oxblood-red  #c7321e  → (0.780, 0.196, 0.118)
+  // vivid-sage   #80e997  → (0.502, 0.914, 0.592)
 
-  vec3 C_GREEN   = vec3(0.627, 0.878, 0.671);
-  vec3 C_AMBER   = vec3(1.000, 0.675, 0.180);
-  vec3 C_OX      = vec3(0.647, 0.176, 0.145);
-  vec3 C_DARK    = vec3(0.031, 0.031, 0.039);
+  vec3 C_AMBER  = vec3(0.851, 0.467, 0.024);
+  vec3 C_TERRA  = vec3(0.886, 0.447, 0.231);
+  vec3 C_GOLD   = vec3(0.961, 0.620, 0.043);
+  vec3 C_OX     = vec3(0.780, 0.196, 0.118);
+  vec3 C_SAGE   = vec3(0.502, 0.914, 0.592);
+  vec3 C_DARK   = vec3(0.020, 0.018, 0.022);
 
-  // fast hash for domain warp
+  // fast hash
   float hash(vec2 p) {
     p = fract(p * vec2(127.1, 311.7));
     p += dot(p, p + 17.5);
@@ -53,7 +56,7 @@ const FRAG_SRC = `
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
   }
 
-  // 3-octave fbm (domain warp)
+  // 3-octave fbm
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
@@ -67,36 +70,46 @@ const FRAG_SRC = `
 
   void main() {
     vec2 uv = gl_FragCoord.xy / u_res;
-    // keep aspect ratio
     uv.x *= u_res.x / u_res.y;
 
-    float t = u_time * 0.08;
+    // ── zoom in so blobs are LARGE relative to viewport ───────
+    uv *= 0.65;
 
-    // ── domain warp ───────────────────────────────────────────
-    vec2 q = vec2(fbm(uv + vec2(0.0, t)),
-                  fbm(uv + vec2(5.2, 1.3 + t * 0.7)));
-    vec2 r = vec2(fbm(uv + 4.0 * q + vec2(1.7, 9.2 + t * 0.5)),
-                  fbm(uv + 4.0 * q + vec2(8.3, 2.8 + t * 0.3)));
-    float f = fbm(uv + 4.0 * r);
+    float t = u_time * 0.065;
 
-    // ── colour field ──────────────────────────────────────────
-    // three colour "blobs" driven by different warp channels
-    float wA = smoothstep(0.40, 0.75, f);              // green blob
-    float wB = smoothstep(0.55, 0.85, q.x + 0.5 * f); // amber blob
-    float wC = smoothstep(0.35, 0.70, r.y + 0.3 * f); // oxblood blob
+    // ── double domain-warp with amplified multipliers ─────────
+    vec2 q = vec2(fbm(uv + vec2(0.00, t)),
+                  fbm(uv + vec2(5.20, 1.30 + t * 0.70)));
+    vec2 r = vec2(fbm(uv + 6.0 * q + vec2(1.70, 9.20 + t * 0.50)),
+                  fbm(uv + 6.0 * q + vec2(8.30, 2.80 + t * 0.30)));
+    float f = fbm(uv + 6.0 * r);
 
+    // ── wide-spread blob weights (low smoothstep → large blobs) ─
+    float wA = smoothstep(0.28, 0.62, f);               // amber main
+    float wB = smoothstep(0.25, 0.58, q.x + 0.4 * f);  // terracotta
+    float wC = smoothstep(0.22, 0.55, r.y + 0.3 * f);  // oxblood
+    float wD = smoothstep(0.35, 0.65, q.y + 0.5 * f);  // gold accent
+    float wE = smoothstep(0.38, 0.68, r.x + 0.4 * f);  // sage counter
+
+    // ── ADDITIVE accumulation = screen-blend hot-spots ────────
     vec3 col = C_DARK;
-    col = mix(col, C_GREEN, wA * 0.45);
-    col = mix(col, C_AMBER, wB * 0.38);
-    col = mix(col, C_OX,   wC * 0.30);
+    col += wA * C_AMBER * 0.85;
+    col += wB * C_TERRA * 0.72;
+    col += wC * C_OX    * 0.58;
+    col += wD * C_GOLD  * 0.65;
+    col += wE * C_SAGE  * 0.38;
 
-    // ── centre vignette (pulls edges to black) ────────────────
+    // ── saturation punch (+40%) ───────────────────────────────
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(lum), col, 1.40);
+
+    // ── soft vignette (only dims outermost 15% ring) ──────────
     vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
-    float vig = 1.0 - smoothstep(0.35, 0.85, length(cv) * 1.4);
+    float vig = 1.0 - smoothstep(0.38, 0.92, length(cv) * 1.15);
     col *= vig;
 
-    // ── global exposure ───────────────────────────────────────
-    col *= 0.78;
+    // ── clamp — no global dimming ─────────────────────────────
+    col = clamp(col, 0.0, 1.0);
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -2004,17 +2017,6 @@ export default function App() {
       {/* WebGL iridescent fluid shader — fixed behind all UI at z-index: -2 */}
       <FluidShaderBackground />
 
-      {/* Subtle grid overlay — sits above shader, below content */}
-      <div className="fixed inset-0 pointer-events-none" aria-hidden="true"
-        style={{
-          zIndex: -1,
-          backgroundSize: '100px 100px',
-          backgroundImage: `
-            linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)
-          `
-        }}
-      />
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
