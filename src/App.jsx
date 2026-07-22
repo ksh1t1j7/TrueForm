@@ -2099,12 +2099,13 @@ export default function App() {
 
       {/* ── SplashCursor: Navier-Stokes fluid trail — z:9998 ── */}
       <SplashCursor
-        DENSITY_DISSIPATION={4.5}
-        VELOCITY_DISSIPATION={3.5}
-        SPLAT_RADIUS={0.10}
-        SPLAT_FORCE={2000}
-        PRESSURE={0.1}
-        CURL={2}
+        DENSITY_DISSIPATION={18.0}
+        VELOCITY_DISSIPATION={12.0}
+        SPLAT_RADIUS={0.015}
+        SPLAT_FORCE={1000}
+        PRESSURE={0.05}
+        CURL={1}
+        SHADING={false}
         RAINBOW_MODE={false}
         COLOR="#e2723b"
         TRANSPARENT={true}

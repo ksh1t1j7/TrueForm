@@ -8,14 +8,14 @@ function SplashCursor({
   SIM_RESOLUTION = 128,
   DYE_RESOLUTION = 1440,
   CAPTURE_RESOLUTION = 512,
-  DENSITY_DISSIPATION = 4.5,
-  VELOCITY_DISSIPATION = 3.5,
-  PRESSURE = 0.1,
+  DENSITY_DISSIPATION = 18.0,
+  VELOCITY_DISSIPATION = 12.0,
+  PRESSURE = 0.05,
   PRESSURE_ITERATIONS = 20,
-  CURL = 2,
-  SPLAT_RADIUS = 0.10,
-  SPLAT_FORCE = 2000,
-  SHADING = true,
+  CURL = 1,
+  SPLAT_RADIUS = 0.015,
+  SPLAT_FORCE = 1000,
+  SHADING = false,
   COLOR_UPDATE_SPEED = 10,
   BACK_COLOR = { r: 0.5, g: 0, b: 0 },
   TRANSPARENT = true,
@@ -671,7 +671,7 @@ function SplashCursor({
   }, []);
 
   return (
-    <div style={{ position:'fixed', top:0, left:0, zIndex:9998, pointerEvents:'none', width:'100%', height:'100%', opacity: 0.70 }}>
+    <div style={{ position:'fixed', top:0, left:0, zIndex:9998, pointerEvents:'none', width:'100%', height:'100%', opacity: 0.35, mixBlendMode: 'normal' }}>
       <canvas ref={canvasRef} id="fluid" style={{ width:'100vw', height:'100vh', display:'block' }} />
     </div>
   );
