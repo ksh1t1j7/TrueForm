@@ -201,8 +201,8 @@ Error generating stack: `+e.message+`
     uv -= vec2(0.18, 0.05);
     uv *= 0.70;
 
-    // Increased dynamic time drive (u_time * 0.28 for live fluid motion)
-    float t = u_time * 0.28;
+    // Smooth, hypnotic fluid drift speed (u_time * 0.10)
+    float t = u_time * 0.10;
 
     // Double domain-warp for swirling fluid smoke folds
     vec2 q = vec2(fbm(uv + vec2(0.00, t)),
