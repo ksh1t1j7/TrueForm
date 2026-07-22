@@ -38,11 +38,17 @@ const FRAG_SRC = `
   vec3 C_TERRA  = vec3(0.498, 0.114, 0.114);
   vec3 C_DARK   = vec3(0.051, 0.055, 0.063);
 
-  // fast hash
+  // fast hash (used by value-noise / fbm only)
   float hash(vec2 p) {
     p = fract(p * vec2(127.1, 311.7));
     p += dot(p, p + 17.5);
     return fract(p.x * p.y);
+  }
+
+  // pixel-mapped grain hash — sin/dot on absolute screen coords
+  // Operates on gl_FragCoord.xy so grain is always 1:1, never scaled
+  float random(vec2 st) {
+    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
   }
 
   // smooth value noise
@@ -106,9 +112,11 @@ const FRAG_SRC = `
     float maxL = max(col.r, max(col.g, col.b));
     if (maxL > 0.55) col *= 0.55 / maxL;
 
-    // ── animated film grain — 40% amplitude baked in ──────────
-    // changes every frame via fract(u_time * 37.0) seed
-    float grain = (hash(gl_FragCoord.xy + fract(u_time * 37.0) * 8191.0) - 0.5) * 0.09;
+    // ── cinematic film grain — pixel-perfect, zero Moiré ────────
+    // random() uses gl_FragCoord.xy (absolute pixels, not UVs) so
+    // grain is always rendered at native 1:1 screen resolution.
+    // Per-frame time offset animates the static each frame.
+    float grain = (random(gl_FragCoord.xy + fract(u_time * 37.0)) - 0.5) * 0.10;
     col = clamp(col + grain, 0.0, 1.0);
 
     // ── radial vignette — firm pull to obsidian at edges ──────
