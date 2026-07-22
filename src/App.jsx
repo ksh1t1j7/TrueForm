@@ -2101,7 +2101,7 @@ export default function App() {
 
 
       {/* ── SplashCursor: Navier-Stokes fluid trail — z:9998 ── */}
-      <SplashCursor />
+      <SplashCursor RAINBOW_MODE={false} COLOR="#e2723b" />
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
