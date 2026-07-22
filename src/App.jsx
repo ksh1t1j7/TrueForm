@@ -23,19 +23,18 @@ const FRAG_SRC = `
   uniform float u_time;
   uniform vec2  u_res;
 
-  // ── VIVID 5-STOP PALETTE ──────────────────────────────────────
-  // amber-gold   #d97706  → (0.851, 0.467, 0.024)
-  // terracotta   #e2723b  → (0.886, 0.447, 0.231)
-  // warm-gold    #f59e0b  → (0.961, 0.620, 0.043)
-  // oxblood-red  #c7321e  → (0.780, 0.196, 0.118)
-  // vivid-sage   #80e997  → (0.502, 0.914, 0.592)
+  // ── MOODY EARTHY PALETTE ─ max luminance anchored at 0.55 ─────
+  // deep burnt-orange  #9a3412  → (0.604, 0.204, 0.071)
+  // dark bronze        #78350f  → (0.471, 0.208, 0.059)
+  // muted olive        #3f4a3c  → (0.247, 0.290, 0.235)
+  // dark terracotta    #7f1d1d  → (0.498, 0.114, 0.114)
+  // obsidian base      #0d0e10  → (0.051, 0.055, 0.063)
 
-  vec3 C_AMBER  = vec3(0.851, 0.467, 0.024);
-  vec3 C_TERRA  = vec3(0.886, 0.447, 0.231);
-  vec3 C_GOLD   = vec3(0.961, 0.620, 0.043);
-  vec3 C_OX     = vec3(0.780, 0.196, 0.118);
-  vec3 C_SAGE   = vec3(0.502, 0.914, 0.592);
-  vec3 C_DARK   = vec3(0.020, 0.018, 0.022);
+  vec3 C_BRONZE = vec3(0.604, 0.204, 0.071);
+  vec3 C_AMBER  = vec3(0.471, 0.208, 0.059);
+  vec3 C_OLIVE  = vec3(0.247, 0.290, 0.235);
+  vec3 C_TERRA  = vec3(0.498, 0.114, 0.114);
+  vec3 C_DARK   = vec3(0.051, 0.055, 0.063);
 
   // fast hash
   float hash(vec2 p) {
@@ -72,44 +71,48 @@ const FRAG_SRC = `
     vec2 uv = gl_FragCoord.xy / u_res;
     uv.x *= u_res.x / u_res.y;
 
-    // ── zoom in so blobs are LARGE relative to viewport ───────
-    uv *= 0.65;
+    // ── UV zoom: blobs span full viewport, not clustered ──────
+    uv *= 0.75;
 
-    float t = u_time * 0.065;
+    // ── slow, liquid time drive ──────────────────────────────
+    float t = u_time * 0.050;
 
-    // ── double domain-warp with amplified multipliers ─────────
+    // ── double domain-warp (5× amplitude for wide sweeps) ────
     vec2 q = vec2(fbm(uv + vec2(0.00, t)),
                   fbm(uv + vec2(5.20, 1.30 + t * 0.70)));
-    vec2 r = vec2(fbm(uv + 6.0 * q + vec2(1.70, 9.20 + t * 0.50)),
-                  fbm(uv + 6.0 * q + vec2(8.30, 2.80 + t * 0.30)));
-    float f = fbm(uv + 6.0 * r);
+    vec2 r = vec2(fbm(uv + 5.0 * q + vec2(1.70, 9.20 + t * 0.50)),
+                  fbm(uv + 5.0 * q + vec2(8.30, 2.80 + t * 0.30)));
+    float f = fbm(uv + 5.0 * r);
 
-    // ── wide-spread blob weights (low smoothstep → large blobs) ─
-    float wA = smoothstep(0.28, 0.62, f);               // amber main
-    float wB = smoothstep(0.25, 0.58, q.x + 0.4 * f);  // terracotta
-    float wC = smoothstep(0.22, 0.55, r.y + 0.3 * f);  // oxblood
-    float wD = smoothstep(0.35, 0.65, q.y + 0.5 * f);  // gold accent
-    float wE = smoothstep(0.38, 0.68, r.x + 0.4 * f);  // sage counter
+    // ── blob weights — mix() keeps colours muted, not additive
+    float wA = smoothstep(0.38, 0.72, f);               // bronze bloom
+    float wB = smoothstep(0.42, 0.76, q.x + 0.4 * f);  // amber fade
+    float wC = smoothstep(0.30, 0.68, r.y + 0.3 * f);  // olive shadow
+    float wD = smoothstep(0.44, 0.78, q.y + 0.5 * f);  // terracotta
 
-    // ── ADDITIVE accumulation = screen-blend hot-spots ────────
+    // ── sequential mix — colours blend INTO each other ────────
     vec3 col = C_DARK;
-    col += wA * C_AMBER * 0.85;
-    col += wB * C_TERRA * 0.72;
-    col += wC * C_OX    * 0.58;
-    col += wD * C_GOLD  * 0.65;
-    col += wE * C_SAGE  * 0.38;
+    col = mix(col, C_BRONZE, wA * 0.82);
+    col = mix(col, C_AMBER,  wB * 0.60);
+    col = mix(col, C_OLIVE,  wC * 0.45);
+    col = mix(col, C_TERRA,  wD * 0.55);
 
-    // ── saturation punch (+40%) ───────────────────────────────
-    float lum = dot(col, vec3(0.299, 0.587, 0.114));
-    col = mix(vec3(lum), col, 1.40);
+    // ── mild contrast curve (lifts darks slightly) ─────────────
+    col = col * (1.12 - col * 0.22);
 
-    // ── soft vignette (only dims outermost 15% ring) ──────────
+    // ── luminance hard-cap at 0.55 (prevents any blowout) ─────
+    float maxL = max(col.r, max(col.g, col.b));
+    if (maxL > 0.55) col *= 0.55 / maxL;
+
+    // ── animated film grain — 40% amplitude baked in ──────────
+    // changes every frame via fract(u_time * 37.0) seed
+    float grain = (hash(gl_FragCoord.xy + fract(u_time * 37.0) * 8191.0) - 0.5) * 0.09;
+    col = clamp(col + grain, 0.0, 1.0);
+
+    // ── radial vignette — firm pull to obsidian at edges ──────
     vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
-    float vig = 1.0 - smoothstep(0.38, 0.92, length(cv) * 1.15);
+    float vig = 1.0 - smoothstep(0.28, 0.82, length(cv) * 1.30);
     col *= vig;
-
-    // ── clamp — no global dimming ─────────────────────────────
-    col = clamp(col, 0.0, 1.0);
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -206,6 +209,148 @@ function FluidShaderBackground() {
         display: 'block',
       }}
     />
+  );
+}
+
+/* ─── FluidCursor ───────────────────────────────────────────── */
+// Zero re-renders: all animation runs entirely through refs + RAF.
+// Dual-element: an instant 4px crosshair dot + a 22px lerped blob
+// with mix-blend-mode:difference so it inverts against the WebGL field.
+function FluidCursor() {
+  const blobRef = useRef(null);
+  const dotRef  = useRef(null);
+
+  useEffect(() => {
+    const blob = blobRef.current;
+    const dot  = dotRef.current;
+    if (!blob || !dot) return;
+
+    // ── hide system cursor globally ───────────────────────────
+    document.body.style.cursor = 'none';
+
+    // ── raw target coords (mutated in mousemove, read in RAF) ─
+    let mx = window.innerWidth  / 2;
+    let my = window.innerHeight / 2;
+
+    // ── current lerped blob position & scale ─────────────────
+    let bx = mx;
+    let by = my;
+    let bScale = 1.0;
+    let bScaleTarget = 1.0;
+
+    let rafId;
+    let visible = false;
+
+    // ── lerp helper ───────────────────────────────────────────
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    // ── mouse move: update raw target only ───────────────────
+    const onMove = (e) => {
+      mx = e.clientX;
+      my = e.clientY;
+      if (!visible) {
+        // snap blob to cursor on first move so it doesn't sweep in
+        bx = mx; by = my;
+        blob.style.opacity = '1';
+        dot.style.opacity  = '1';
+        visible = true;
+      }
+    };
+
+    // ── detect interactive targets for scale-up ───────────────
+    const INTERACTIVE = 'button, a, [role="tab"], [data-cursor-hover]';
+    const onOver = (e) => {
+      if (e.target.closest(INTERACTIVE)) bScaleTarget = 2.4;
+    };
+    const onOut = (e) => {
+      if (e.target.closest(INTERACTIVE)) bScaleTarget = 1.0;
+    };
+
+    // ── RAF animation loop ────────────────────────────────────
+    const tick = () => {
+      // lerp blob towards raw mouse — 0.10 factor = dreamy lag
+      bx = lerp(bx, mx, 0.10);
+      by = lerp(by, my, 0.10);
+
+      // lerp scale for smooth hover expand
+      bScale = lerp(bScale, bScaleTarget, 0.12);
+
+      // blob: centred on cursor (offset by half its 22px size)
+      blob.style.transform =
+        `translate3d(${bx - 11}px, ${by - 11}px, 0) scale(${bScale})`;
+
+      // dot: instant follow (centred on its 4px size)
+      dot.style.transform =
+        `translate3d(${mx - 2}px, ${my - 2}px, 0)`;
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    window.addEventListener('mousemove',   onMove,  { passive: true });
+    document.addEventListener('mouseover', onOver);
+    document.addEventListener('mouseout',  onOut);
+
+    // ── hide cursors when mouse leaves window ─────────────────
+    const onLeave = () => { blob.style.opacity = '0'; dot.style.opacity = '0'; visible = false; };
+    const onEnter = () => { blob.style.opacity = '1'; dot.style.opacity = '1'; };
+    document.addEventListener('mouseleave', onLeave);
+    document.addEventListener('mouseenter', onEnter);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove',   onMove);
+      document.removeEventListener('mouseover',  onOver);
+      document.removeEventListener('mouseout',   onOut);
+      document.removeEventListener('mouseleave', onLeave);
+      document.removeEventListener('mouseenter', onEnter);
+    };
+  }, []);
+
+  return (
+    <>
+      {/* ── Lerped blob: mix-blend-mode:difference ── */}
+      <div
+        ref={blobRef}
+        aria-hidden="true"
+        style={{
+          position:        'fixed',
+          top:             0,
+          left:            0,
+          width:           22,
+          height:          22,
+          borderRadius:    '50%',
+          backgroundColor: '#ffffff',
+          mixBlendMode:    'difference',
+          pointerEvents:   'none',
+          zIndex:          9999,
+          opacity:         0,           // hidden until first mouse move
+          willChange:      'transform',
+          filter:          'blur(0.5px)',
+        }}
+      />
+
+      {/* ── Instant dot: precise targeting crosshair ── */}
+      <div
+        ref={dotRef}
+        aria-hidden="true"
+        style={{
+          position:        'fixed',
+          top:             0,
+          left:            0,
+          width:           4,
+          height:          4,
+          borderRadius:    '50%',
+          backgroundColor: 'rgba(255,255,255,0.85)',
+          pointerEvents:   'none',
+          zIndex:          10000,
+          opacity:         0,           // hidden until first mouse move
+          willChange:      'transform',
+        }}
+      />
+    </>
   );
 }
 
@@ -2013,10 +2158,12 @@ export default function App() {
   };
 
   return (
-    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#080808' }}>
-      {/* WebGL iridescent fluid shader — fixed behind all UI at z-index: -2 */}
+    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0 cursor-none" style={{ background: '#0d0e10' }}>
+      {/* ── WebGL moody fluid shader — z-index: -2 ── */}
       <FluidShaderBackground />
 
+      {/* ── Premium fluid cursor — zero re-renders ── */}
+      <FluidCursor />
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
