@@ -8,13 +8,13 @@ function SplashCursor({
   SIM_RESOLUTION = 128,
   DYE_RESOLUTION = 1440,
   CAPTURE_RESOLUTION = 512,
-  DENSITY_DISSIPATION = 1.2,
-  VELOCITY_DISSIPATION = 1.2,
-  PRESSURE = 0.4,
+  DENSITY_DISSIPATION = 4.5,
+  VELOCITY_DISSIPATION = 3.5,
+  PRESSURE = 0.1,
   PRESSURE_ITERATIONS = 20,
-  CURL = 8,
-  SPLAT_RADIUS = 0.55,
-  SPLAT_FORCE = 9500,
+  CURL = 2,
+  SPLAT_RADIUS = 0.10,
+  SPLAT_FORCE = 2000,
   SHADING = true,
   COLOR_UPDATE_SPEED = 10,
   BACK_COLOR = { r: 0.5, g: 0, b: 0 },
@@ -220,7 +220,7 @@ function SplashCursor({
               float diffuse = clamp(dot(n, l) + 0.7, 0.7, 1.0); c *= diffuse;
           #endif
           float a = max(c.r, max(c.g, c.b));
-          gl_FragColor = vec4(c * 2.2, min(1.0, a * 2.5));
+          gl_FragColor = vec4(c, a);
       }
     `;
 
@@ -587,9 +587,9 @@ function SplashCursor({
       let val = hex.replace('#','');
       if (val.length===3) val = val[0]+val[0]+val[1]+val[1]+val[2]+val[2];
       return {
-        r: (parseInt(val.slice(0,2),16)/255) * 0.65,
-        g: (parseInt(val.slice(2,4),16)/255) * 0.65,
-        b: (parseInt(val.slice(4,6),16)/255) * 0.65
+        r: (parseInt(val.slice(0,2),16)/255) * 0.18,
+        g: (parseInt(val.slice(2,4),16)/255) * 0.18,
+        b: (parseInt(val.slice(4,6),16)/255) * 0.18
       };
     }
 
@@ -671,7 +671,7 @@ function SplashCursor({
   }, []);
 
   return (
-    <div style={{ position:'fixed', top:0, left:0, zIndex:9998, pointerEvents:'none', width:'100%', height:'100%' }}>
+    <div style={{ position:'fixed', top:0, left:0, zIndex:9998, pointerEvents:'none', width:'100%', height:'100%', opacity: 0.70 }}>
       <canvas ref={canvasRef} id="fluid" style={{ width:'100vw', height:'100vh', display:'block' }} />
     </div>
   );
