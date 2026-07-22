@@ -2104,7 +2104,8 @@ export default function App() {
         SPLAT_RADIUS={0.22}
         SPLAT_FORCE={5500}
         CURL={4}
-        RAINBOW_MODE={true}
+        RAINBOW_MODE={false}
+        COLOR="#e2723b"
         TRANSPARENT={true}
       />
 

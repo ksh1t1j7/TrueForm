@@ -575,27 +575,27 @@ function SplashCursor({
     function correctDeltaX(delta) { let ar = canvas.width/canvas.height; if (ar < 1) delta *= ar; return delta; }
     function correctDeltaY(delta) { let ar = canvas.width/canvas.height; if (ar > 1) delta /= ar; return delta; }
 
+    const themePalette = [
+      '#e2723b', // Vibrant Terracotta
+      '#9a3412', // Deep Burnt Orange
+      '#78350f', // Dark Bronze
+      '#9f1239', // Deep Crimson/Clay
+      '#27272a'  // Dark Muted Slate/Olive
+    ];
+
     function hexToRGB(hex) {
       let val = hex.replace('#','');
       if (val.length===3) val = val[0]+val[0]+val[1]+val[1]+val[2]+val[2];
       return {
-        r: parseInt(val.slice(0,2),16)/255*0.15,
-        g: parseInt(val.slice(2,4),16)/255*0.15,
-        b: parseInt(val.slice(4,6),16)/255*0.15
+        r: (parseInt(val.slice(0,2),16)/255) * 0.22,
+        g: (parseInt(val.slice(2,4),16)/255) * 0.22,
+        b: (parseInt(val.slice(4,6),16)/255) * 0.22
       };
     }
 
     function generateColor() {
-      if (!config.RAINBOW_MODE) return hexToRGB(config.COLOR);
-      let c = HSVtoRGB(Math.random(), 1, 1);
-      c.r *= 0.15; c.g *= 0.15; c.b *= 0.15;
-      return c;
-    }
-
-    function HSVtoRGB(h, s, v) {
-      let r,g,b,i=Math.floor(h*6),f=h*6-i,p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);
-      switch(i%6){case 0:r=v;g=t;b=p;break;case 1:r=q;g=v;b=p;break;case 2:r=p;g=v;b=t;break;case 3:r=p;g=q;b=v;break;case 4:r=t;g=p;b=v;break;case 5:r=v;g=p;b=q;break;}
-      return {r,g,b};
+      const hex = themePalette[Math.floor(Math.random() * themePalette.length)];
+      return hexToRGB(hex);
     }
 
     function wrap(value, min, max) {
