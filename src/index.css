@@ -102,3 +102,58 @@
     display: block;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────
+   View Transitions API — Directional Screen Transitions
+   Source: modern-web-guidance › directional-navigation-transitions
+   Forward  : new screen slides in from RIGHT  → old slides out LEFT
+   Backward : new screen slides in from LEFT   → old slides out RIGHT
+   GPU-optimised: uses transform only (no layout/paint)
+   Fallback  : no ::view-transition support → instant DOM swap
+────────────────────────────────────────────────────────────────── */
+
+/* Keyframes — slide directions */
+@keyframes vt-slide-out-left   { to   { transform: translateX(-6%);  opacity: 0; } }
+@keyframes vt-slide-in-right   { from { transform: translateX(6%);   opacity: 0; } }
+@keyframes vt-slide-out-right  { to   { transform: translateX(6%);   opacity: 0; } }
+@keyframes vt-slide-in-left    { from { transform: translateX(-6%);  opacity: 0; } }
+
+/* Shared timing for all transitions */
+::view-transition-group(root) {
+  animation-duration: 0.38s;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Make both old and new fill their containers without stretching */
+::view-transition-old(root),
+::view-transition-new(root) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* FORWARD navigation: old exits left, new enters from right */
+html:active-view-transition-type(forward)::view-transition-old(root) {
+  animation-name: vt-slide-out-left;
+}
+html:active-view-transition-type(forward)::view-transition-new(root) {
+  animation-name: vt-slide-in-right;
+}
+
+/* BACKWARD navigation: old exits right, new enters from left */
+html:active-view-transition-type(backward)::view-transition-old(root) {
+  animation-name: vt-slide-out-right;
+}
+html:active-view-transition-type(backward)::view-transition-new(root) {
+  animation-name: vt-slide-in-left;
+}
+
+/* Accessibility: disable all view transition animations for reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+

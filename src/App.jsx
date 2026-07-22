@@ -2183,6 +2183,9 @@ function PredictiveNutritionHub() {
 }
 
 /* ─── ROOT ──────────────────────────────────────────────────── */
+// Screen order for direction detection
+const SCREEN_ORDER = [SCREENS.LANDING, SCREENS.SELECT, SCREENS.TRACKING, SCREENS.ANALYSIS];
+
 export default function App() {
   const [screen, setScreen] = useState(SCREENS.LANDING);
   const [mode, setMode] = useState('mobility'); // 'mobility' or 'nutrition'
@@ -2190,10 +2193,33 @@ export default function App() {
   const [sessionData, setSessionData] = useState(null);
   const [showTeam, setShowTeam] = useState(false);
 
+  /**
+   * navigate() — wraps every screen change in the View Transitions API.
+   * Automatically detects forward vs backward direction from SCREEN_ORDER.
+   * Falls back to instant swap in unsupported browsers.
+   */
+  const navigate = (nextScreen, updateFn) => {
+    const currentIdx = SCREEN_ORDER.indexOf(screen);
+    const nextIdx    = SCREEN_ORDER.indexOf(nextScreen);
+    const direction  = nextIdx >= currentIdx ? 'forward' : 'backward';
+
+    const doUpdate = () => {
+      if (updateFn) updateFn();
+      setScreen(nextScreen);
+    };
+
+    if (!document.startViewTransition) {
+      doUpdate();
+      return;
+    }
+
+    document.startViewTransition({ update: doUpdate, types: [direction] });
+  };
+
   const handleBack = () => {
-    if (screen === SCREENS.SELECT) setScreen(SCREENS.LANDING);
-    else if (screen === SCREENS.TRACKING) setScreen(SCREENS.SELECT);
-    else if (screen === SCREENS.ANALYSIS) setScreen(SCREENS.SELECT);
+    if (screen === SCREENS.SELECT)   navigate(SCREENS.LANDING);
+    else if (screen === SCREENS.TRACKING) navigate(SCREENS.SELECT);
+    else if (screen === SCREENS.ANALYSIS) navigate(SCREENS.SELECT);
   };
 
   return (
@@ -2212,22 +2238,27 @@ export default function App() {
       ) : (
         <>
           {screen === SCREENS.LANDING && (
-            <LandingScreen onStart={() => setScreen(SCREENS.SELECT)} mode={mode} />
+            <LandingScreen
+              onStart={() => navigate(SCREENS.SELECT)}
+              mode={mode}
+            />
           )}
 
           {screen === SCREENS.SELECT && (
-            <ExerciseSelectScreen onSelect={(ex) => { setSelectedExercise(ex); setScreen(SCREENS.TRACKING); }} />
+            <ExerciseSelectScreen
+              onSelect={(ex) => navigate(SCREENS.TRACKING, () => setSelectedExercise(ex))}
+            />
           )}
 
           {screen === SCREENS.TRACKING && selectedExercise && (
             <TrackingScreen key={selectedExercise.id} exercise={selectedExercise}
-              onFinish={(d) => { setSessionData(d); setScreen(SCREENS.ANALYSIS); }} />
+              onFinish={(d) => navigate(SCREENS.ANALYSIS, () => setSessionData(d))} />
           )}
 
           {screen === SCREENS.ANALYSIS && sessionData && (
             <AnalysisScreen data={sessionData}
-              onRetry={() => { setSessionData(null); setScreen(SCREENS.SELECT); }}
-              onHome={() => { setSelectedExercise(null); setSessionData(null); setScreen(SCREENS.LANDING); }} />
+              onRetry={() => navigate(SCREENS.SELECT, () => setSessionData(null))}
+              onHome={() => navigate(SCREENS.LANDING, () => { setSelectedExercise(null); setSessionData(null); })} />
           )}
         </>
       )}
