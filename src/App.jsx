@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 
 import SplashCursor from './SplashCursor';
-import ScrollVideo3D from './components/ScrollVideo3D';
 
 // TensorFlow.js from Global Scope (loaded via CDN in index.html to bypass Vite bundling errors)
 const tf = window.tf;
@@ -991,7 +990,6 @@ function LandingScreen({ onStart, mode }) {
         </div>
       </section>
 
-      <ScrollVideo3D />
       <HowItWorksSlide />
       <MetricsSlide />
 
