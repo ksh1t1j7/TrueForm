@@ -362,19 +362,18 @@ function Logo({ size = 'sm' }) {
 /* ─── Header ───────────────────────────────────────────────── */
 function Header({ screen, onInfo, onBack, mode, setMode }) {
   const steps = [SCREENS.LANDING, SCREENS.SELECT, SCREENS.TRACKING, SCREENS.ANALYSIS];
-  const isLanding = screen === SCREENS.LANDING;
   return (
     <header
-      className={`flex items-center justify-between px-4 md:px-8 py-3.5 md:py-4 border-b border-white/5 shrink-0 sticky top-0 z-40 transition-all duration-300
-        ${ isLanding ? 'bg-transparent' : 'bg-[#0d0e10]/85 backdrop-blur-xl' }`}
+      className="flex items-center justify-between px-5 md:px-8 py-3 md:py-4 shrink-0 absolute top-0 left-0 right-0 z-40"
       role="banner"
     >
+      {/* Left: back + logo */}
       <div className="flex items-center gap-3">
         {screen !== SCREENS.LANDING && screen !== SCREENS.SELECT && (
           <button
             onClick={onBack}
             aria-label="Go back to previous screen"
-            className="text-white/60 hover:text-white/90 transition-colors cursor-pointer mr-1 p-1 rounded-lg hover:bg-white/5"
+            className="text-white/40 hover:text-white/70 transition-all duration-200 cursor-pointer p-1.5 rounded-xl hover:bg-white/8"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -382,14 +381,21 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
         <Logo size="sm" />
       </div>
 
-      {/* Segment Mode Selector */}
-      <div className="flex bg-[#111316] border border-white/8 rounded-full p-1" role="tablist" aria-label="Application mode">
+      {/* Centre: floating glassmorphism mode pill — no background box */}
+      <div
+        className="flex rounded-full p-1"
+        style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.08)' }}
+        role="tablist"
+        aria-label="Application mode"
+      >
         <button
           role="tab"
           aria-selected={mode === 'mobility'}
           onClick={() => setMode('mobility')}
           className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-            mode === 'mobility' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
+            mode === 'mobility'
+              ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/30'
+              : 'text-white/45 hover:text-white/80'
           }`}
         >
           Mobility
@@ -399,18 +405,21 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
           aria-selected={mode === 'nutrition'}
           onClick={() => setMode('nutrition')}
           className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-            mode === 'nutrition' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
+            mode === 'nutrition'
+              ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/30'
+              : 'text-white/45 hover:text-white/80'
           }`}
         >
           AI Nutrition
         </button>
       </div>
 
+      {/* Right: progress dots + info */}
       <div className="flex items-center gap-4">
         <div className="flex gap-1.5" role="progressbar" aria-label="Navigation progress" aria-valuenow={Object.values(SCREENS).indexOf(screen) + 1} aria-valuemin={1} aria-valuemax={4}>
           {steps.map(s => (
             <div key={s} className={`rounded-full transition-all duration-300 ${
-              s === screen ? 'w-5 h-1.5 bg-[#e2723b]' : 'w-1.5 h-1.5 bg-white/15'
+              s === screen ? 'w-5 h-1.5 bg-[#e2723b]' : 'w-1.5 h-1.5 bg-white/12'
             }`} />
           ))}
         </div>
@@ -418,7 +427,7 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
           onClick={onInfo}
           aria-label="View team information"
           title="Team info"
-          className="text-white/50 hover:text-white/80 transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/5"
+          className="text-white/35 hover:text-white/65 transition-colors cursor-pointer p-1.5 rounded-xl hover:bg-white/8"
         >
           <Info className="w-4 h-4" />
         </button>
@@ -981,7 +990,7 @@ function LandingScreen({ onStart, mode }) {
 function ExerciseSelectScreen({ onSelect }) {
   const [hovered, setHovered] = useState(null);
   return (
-    <div className="relative z-10 flex-1 flex flex-col px-8 py-10 max-w-4xl mx-auto w-full" role="main">
+    <div className="relative z-10 flex-1 flex flex-col px-8 pt-20 pb-10 max-w-4xl mx-auto w-full" role="main">
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#e2723b]/25 bg-[#e2723b]/8 mb-4">
           <span className="text-[#e2723b] text-[10px] uppercase tracking-widest font-bold">Step 1 of 2</span>
@@ -1381,7 +1390,7 @@ function TrackingScreen({ exercise, onFinish }) {
   };
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col gap-4 px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto md:overflow-hidden select-none">
+    <div className="relative z-10 flex-1 flex flex-col gap-4 px-4 sm:px-6 pt-16 pb-4 sm:pb-5 overflow-y-auto md:overflow-hidden select-none">
       <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
         {/* Webcam Display */}
         <div className="relative bg-black rounded-[1.8rem] border border-white/8 overflow-hidden w-full md:w-[58%] shrink-0 aspect-[4/3] md:aspect-auto min-h-[240px] md:min-h-0">
@@ -1494,7 +1503,7 @@ function AnalysisScreen({ data, onRetry, onHome }) {
   }).join(' ');
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col px-8 py-8 overflow-y-auto max-w-5xl mx-auto w-full select-none">
+    <div className="relative z-10 flex-1 flex flex-col px-8 pt-20 pb-8 overflow-y-auto max-w-5xl mx-auto w-full select-none">
       <div className="flex items-start justify-between mb-8">
         <div>
           <p className="text-[#e2723b] text-xs uppercase tracking-widest font-semibold mb-1">Session Complete</p>
@@ -1804,7 +1813,7 @@ function PredictiveNutritionHub() {
   };
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 py-4 md:py-6 overflow-y-auto max-w-7xl mx-auto w-full select-none">
+    <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 pt-20 pb-4 md:pb-6 overflow-y-auto max-w-7xl mx-auto w-full select-none">
       
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#111316]/90 border border-white/8 rounded-3xl p-6 backdrop-blur-xl">
