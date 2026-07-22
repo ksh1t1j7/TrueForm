@@ -320,11 +320,39 @@ function useInView(ref) {
 /* ─── Logo ─────────────────────────────────────────────────── */
 function Logo({ size = 'sm' }) {
   return (
-    <div className="inline-flex items-center gap-2.5 bg-transparent border-0 shadow-none p-0 cursor-pointer hover:opacity-80 transition-all group select-none">
-      <div className="flex items-center justify-center p-1 rounded-lg bg-transparent">
-        <Activity className="w-5 h-5 text-[#e2723b] group-hover:scale-110 transition-transform duration-200" />
+    <div className="inline-flex items-center gap-2.5 bg-transparent border-0 shadow-none p-0 cursor-pointer hover:opacity-85 transition-all group select-none">
+      <div className="flex items-center justify-center p-0.5 rounded-lg bg-transparent">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="text-[#e2723b] drop-shadow-[0_0_8px_rgba(232,112,56,0.5)] group-hover:scale-110 transition-transform duration-200"
+        >
+          {/* Joint Kinematic / Neural Synapse Paths */}
+          <path
+            d="M5 18L11 12L19 6"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M11 12L17 18"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Geometric Synapse / Joint Nodes */}
+          <circle cx="5" cy="18" r="2.5" fill="currentColor" />
+          <circle cx="11" cy="12" r="3" fill="#ffffff" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="19" cy="6" r="2.5" fill="currentColor" />
+          <circle cx="17" cy="18" r="2" fill="currentColor" />
+        </svg>
       </div>
-      <span className="text-white font-extrabold tracking-tight text-base flex items-center gap-1">
+      <span className="text-white font-extrabold tracking-wide text-base flex items-center gap-1">
         TrueForm <span className="text-[#e2723b]">AI</span>
       </span>
     </div>
@@ -728,7 +756,9 @@ function LandingScreen({ onStart, mode }) {
             </span>
           </div>
 
-
+          <h2 className={`text-xs sm:text-sm font-bold uppercase tracking-[0.25em] mb-3 bg-gradient-to-r from-[#e2723b] via-[#f97316] to-[#9a3412] bg-clip-text text-transparent transition-all duration-1000 ease-out delay-150 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            {mode === 'mobility' ? 'TrueForm AI Computer Vision' : 'TrueForm AI Predictive Intelligence'}
+          </h2>
 
           <h1 className={`text-3xl sm:text-5xl font-bold text-white leading-tight mb-4 max-w-2xl mx-auto transition-all duration-1000 ease-out delay-200 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             {mode === 'mobility' ? (
