@@ -319,14 +319,14 @@ function useInView(ref) {
 
 /* ─── Logo ─────────────────────────────────────────────────── */
 function Logo({ size = 'sm' }) {
-  const h = { sm: 'h-7', md: 'h-10', lg: 'h-14' };
   return (
-    <div className="inline-flex items-center justify-center">
-      <img
-        src="brandimage.png"
-        alt="TrueForm AI Logo"
-        className={`${h[size]} w-auto object-contain block rounded-md`}
-      />
+    <div className="inline-flex items-center gap-2.5 bg-transparent border-0 shadow-none p-0 cursor-pointer hover:opacity-80 transition-all group select-none">
+      <div className="flex items-center justify-center p-1 rounded-lg bg-transparent">
+        <Activity className="w-5 h-5 text-[#e2723b] group-hover:scale-110 transition-transform duration-200" />
+      </div>
+      <span className="text-white font-extrabold tracking-tight text-base flex items-center gap-1">
+        TrueForm <span className="text-[#e2723b]">AI</span>
+      </span>
     </div>
   );
 }
@@ -728,9 +728,7 @@ function LandingScreen({ onStart, mode }) {
             </span>
           </div>
 
-          <div className={`flex justify-center mb-6 transition-all duration-1000 ease-out delay-100 ${loaded ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}>
-            <Logo size="lg" />
-          </div>
+
 
           <h1 className={`text-3xl sm:text-5xl font-bold text-white leading-tight mb-4 max-w-2xl mx-auto transition-all duration-1000 ease-out delay-200 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             {mode === 'mobility' ? (
