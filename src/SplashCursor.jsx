@@ -8,19 +8,19 @@ function SplashCursor({
   SIM_RESOLUTION = 128,
   DYE_RESOLUTION = 1440,
   CAPTURE_RESOLUTION = 512,
-  DENSITY_DISSIPATION = 3.5,
-  VELOCITY_DISSIPATION = 2,
-  PRESSURE = 0.1,
+  DENSITY_DISSIPATION = 1.2,
+  VELOCITY_DISSIPATION = 1.2,
+  PRESSURE = 0.4,
   PRESSURE_ITERATIONS = 20,
-  CURL = 3,
-  SPLAT_RADIUS = 0.2,
-  SPLAT_FORCE = 6000,
+  CURL = 8,
+  SPLAT_RADIUS = 0.55,
+  SPLAT_FORCE = 9500,
   SHADING = true,
   COLOR_UPDATE_SPEED = 10,
   BACK_COLOR = { r: 0.5, g: 0, b: 0 },
   TRANSPARENT = true,
-  RAINBOW_MODE = true,
-  COLOR = '#ff0000'
+  RAINBOW_MODE = false,
+  COLOR = '#e2723b'
 }) {
   const canvasRef = useRef(null);
   const animationFrameId = useRef(null);
@@ -220,7 +220,7 @@ function SplashCursor({
               float diffuse = clamp(dot(n, l) + 0.7, 0.7, 1.0); c *= diffuse;
           #endif
           float a = max(c.r, max(c.g, c.b));
-          gl_FragColor = vec4(c, a);
+          gl_FragColor = vec4(c * 2.2, min(1.0, a * 2.5));
       }
     `;
 
@@ -587,9 +587,9 @@ function SplashCursor({
       let val = hex.replace('#','');
       if (val.length===3) val = val[0]+val[0]+val[1]+val[1]+val[2]+val[2];
       return {
-        r: (parseInt(val.slice(0,2),16)/255) * 0.22,
-        g: (parseInt(val.slice(2,4),16)/255) * 0.22,
-        b: (parseInt(val.slice(4,6),16)/255) * 0.22
+        r: (parseInt(val.slice(0,2),16)/255) * 0.65,
+        g: (parseInt(val.slice(2,4),16)/255) * 0.65,
+        b: (parseInt(val.slice(4,6),16)/255) * 0.65
       };
     }
 
