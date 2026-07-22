@@ -214,147 +214,6 @@ function FluidShaderBackground() {
   );
 }
 
-/* ─── FluidCursor ───────────────────────────────────────────── */
-// Zero re-renders: all animation runs entirely through refs + RAF.
-// Dual-element: an instant 4px crosshair dot + a 22px lerped blob
-// with mix-blend-mode:difference so it inverts against the WebGL field.
-function FluidCursor() {
-  const blobRef = useRef(null);
-  const dotRef  = useRef(null);
-
-  useEffect(() => {
-    const blob = blobRef.current;
-    const dot  = dotRef.current;
-    if (!blob || !dot) return;
-
-    // ── hide system cursor globally ───────────────────────────
-    document.body.style.cursor = 'none';
-
-    // ── raw target coords (mutated in mousemove, read in RAF) ─
-    let mx = window.innerWidth  / 2;
-    let my = window.innerHeight / 2;
-
-    // ── current lerped blob position & scale ─────────────────
-    let bx = mx;
-    let by = my;
-    let bScale = 1.0;
-    let bScaleTarget = 1.0;
-
-    let rafId;
-    let visible = false;
-
-    // ── lerp helper ───────────────────────────────────────────
-    const lerp = (a, b, t) => a + (b - a) * t;
-
-    // ── mouse move: update raw target only ───────────────────
-    const onMove = (e) => {
-      mx = e.clientX;
-      my = e.clientY;
-      if (!visible) {
-        // snap blob to cursor on first move so it doesn't sweep in
-        bx = mx; by = my;
-        blob.style.opacity = '1';
-        dot.style.opacity  = '1';
-        visible = true;
-      }
-    };
-
-    // ── detect interactive targets for scale-up ───────────────
-    const INTERACTIVE = 'button, a, [role="tab"], [data-cursor-hover]';
-    const onOver = (e) => {
-      if (e.target.closest(INTERACTIVE)) bScaleTarget = 2.4;
-    };
-    const onOut = (e) => {
-      if (e.target.closest(INTERACTIVE)) bScaleTarget = 1.0;
-    };
-
-    // ── RAF animation loop ────────────────────────────────────
-    const tick = () => {
-      // lerp blob towards raw mouse — 0.10 factor = dreamy lag
-      bx = lerp(bx, mx, 0.10);
-      by = lerp(by, my, 0.10);
-
-      // lerp scale for smooth hover expand
-      bScale = lerp(bScale, bScaleTarget, 0.12);
-
-      // blob: centred on cursor (offset by half its 22px size)
-      blob.style.transform =
-        `translate3d(${bx - 11}px, ${by - 11}px, 0) scale(${bScale})`;
-
-      // dot: instant follow (centred on its 4px size)
-      dot.style.transform =
-        `translate3d(${mx - 2}px, ${my - 2}px, 0)`;
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-
-    window.addEventListener('mousemove',   onMove,  { passive: true });
-    document.addEventListener('mouseover', onOver);
-    document.addEventListener('mouseout',  onOut);
-
-    // ── hide cursors when mouse leaves window ─────────────────
-    const onLeave = () => { blob.style.opacity = '0'; dot.style.opacity = '0'; visible = false; };
-    const onEnter = () => { blob.style.opacity = '1'; dot.style.opacity = '1'; };
-    document.addEventListener('mouseleave', onLeave);
-    document.addEventListener('mouseenter', onEnter);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      document.body.style.cursor = '';
-      window.removeEventListener('mousemove',   onMove);
-      document.removeEventListener('mouseover',  onOver);
-      document.removeEventListener('mouseout',   onOut);
-      document.removeEventListener('mouseleave', onLeave);
-      document.removeEventListener('mouseenter', onEnter);
-    };
-  }, []);
-
-  return (
-    <>
-      {/* ── Lerped blob: mix-blend-mode:difference ── */}
-      <div
-        ref={blobRef}
-        aria-hidden="true"
-        style={{
-          position:        'fixed',
-          top:             0,
-          left:            0,
-          width:           22,
-          height:          22,
-          borderRadius:    '50%',
-          backgroundColor: '#ffffff',
-          mixBlendMode:    'difference',
-          pointerEvents:   'none',
-          zIndex:          9999,
-          opacity:         0,           // hidden until first mouse move
-          willChange:      'transform',
-          filter:          'blur(0.5px)',
-        }}
-      />
-
-      {/* ── Instant dot: precise targeting crosshair ── */}
-      <div
-        ref={dotRef}
-        aria-hidden="true"
-        style={{
-          position:        'fixed',
-          top:             0,
-          left:            0,
-          width:           4,
-          height:          4,
-          borderRadius:    '50%',
-          backgroundColor: 'rgba(255,255,255,0.85)',
-          pointerEvents:   'none',
-          zIndex:          10000,
-          opacity:         0,           // hidden until first mouse move
-          willChange:      'transform',
-        }}
-      />
-    </>
-  );
-}
 
 /* ─── Constants ─────────────────────────────────────────────── */
 const EXERCISES = [
@@ -2160,12 +2019,10 @@ export default function App() {
   };
 
   return (
-    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0 cursor-none" style={{ background: '#0d0e10' }}>
+    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#0d0e10' }}>
       {/* ── WebGL moody fluid shader — z-index: -2 ── */}
       <FluidShaderBackground />
 
-      {/* ── Premium fluid cursor blob + dot — z:9999/10000 ── */}
-      <FluidCursor />
 
       {/* ── SplashCursor: Navier-Stokes fluid trail — z:9998 ── */}
       <SplashCursor
