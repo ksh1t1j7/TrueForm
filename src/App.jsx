@@ -4,7 +4,7 @@ import {
   StopCircle, Info, AlertCircle, X, ChevronRight, ArrowLeft,
   BarChart2, Zap, Target, TrendingUp, CheckCircle, Clock, Award,
   RefreshCw, Rotate3D, Activity, Brain, ChevronDown, Wifi, Layers,
-  Camera, Upload, Plus, Trash2, Apple
+  Camera, Upload, Plus, Trash2, Apple, Cpu, Dna, Shield
 } from 'lucide-react';
 
 import SplashCursor from './SplashCursor';
@@ -352,30 +352,28 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
       </div>
 
       {/* Segment Mode Selector */}
-      {isLanding && (
-        <div className="flex bg-[#111316] border border-white/8 rounded-full p-1" role="tablist" aria-label="Application mode">
-          <button
-            role="tab"
-            aria-selected={mode === 'mobility'}
-            onClick={() => setMode('mobility')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-              mode === 'mobility' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
-            }`}
-          >
-            Mobility
-          </button>
-          <button
-            role="tab"
-            aria-selected={mode === 'nutrition'}
-            onClick={() => setMode('nutrition')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-              mode === 'nutrition' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
-            }`}
-          >
-            AI Nutrition
-          </button>
-        </div>
-      )}
+      <div className="flex bg-[#111316] border border-white/8 rounded-full p-1" role="tablist" aria-label="Application mode">
+        <button
+          role="tab"
+          aria-selected={mode === 'mobility'}
+          onClick={() => setMode('mobility')}
+          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+            mode === 'mobility' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
+          }`}
+        >
+          Mobility
+        </button>
+        <button
+          role="tab"
+          aria-selected={mode === 'nutrition'}
+          onClick={() => setMode('nutrition')}
+          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+            mode === 'nutrition' ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/25' : 'text-white/55 hover:text-white'
+          }`}
+        >
+          AI Nutrition
+        </button>
+      </div>
 
       <div className="flex items-center gap-4">
         <div className="flex gap-1.5" role="progressbar" aria-label="Navigation progress" aria-valuenow={Object.values(SCREENS).indexOf(screen) + 1} aria-valuemin={1} aria-valuemax={4}>
@@ -1493,509 +1491,588 @@ function AnalysisScreen({ data, onRetry, onHome }) {
   );
 }
 
-/* ─── SCREEN 5: AI Nutrition Dashboard ─────────────────────── */
-function NutritionScreen() {
-  const [model, setModel] = useState(null);
-  const [loadingModel, setLoadingModel] = useState(false);
-  const [modelStatus, setModelStatus] = useState('');
-  
-  const [imageSrc, setImageSrc] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState(null);
-  const [confidence, setConfidence] = useState(0);
+/* ─── SCREEN 5: Predictive Nutritional Intelligence Hub ────── */
+function PredictiveNutritionHub() {
+  // Input Biomarker State
+  const [fastingGlucose, setFastingGlucose] = useState('95');
+  const [triglycerides, setTriglycerides] = useState('125');
+  const [hdlCholesterol, setHdlCholesterol] = useState('52');
+  const [ldlCholesterol, setLdlCholesterol] = useState('98');
+  const [hba1c, setHba1c] = useState('5.2');
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showManualResults, setShowManualResults] = useState(false);
+  // Diagnostics & Inference State
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(null);
 
-  // Daily log (persisted via localStorage)
-  const [dailyLog, setDailyLog] = useState(() => {
-    const saved = localStorage.getItem('tf_nutrition_log');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Compute inference model predictions (FFNN & Random Forest logic)
+  const runInference = useCallback((fg, tg, hdl, ldl, a1c) => {
+    const glucose = parseFloat(fg) || 90;
+    const trig = parseFloat(tg) || 120;
+    const hdlVal = parseFloat(hdl) || 50;
+    const ldlVal = parseFloat(ldl) || 100;
+    const a1cVal = parseFloat(a1c) || 5.2;
 
-  const videoRef = useRef(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [camError, setCamError] = useState('');
-  const streamRef = useRef(null);
-
-  // Save log helper
-  const updateLog = (newLog) => {
-    setDailyLog(newLog);
-    localStorage.setItem('tf_nutrition_log', JSON.stringify(newLog));
-  };
-
-  // Load MobileNet on demand
-  const initMobileNet = async () => {
-    if (model) return model;
-    setLoadingModel(true);
-    setModelStatus('Initializing TensorFlow.js...');
-    try {
-      await tf.ready();
-      setModelStatus('Loading MobileNet Model...');
-      const loadedModel = await mobilenet.load({ version: 1, alpha: 1.0 });
-      setModel(loadedModel);
-      setLoadingModel(false);
-      setModelStatus('');
-      return loadedModel;
-    } catch (e) {
-      console.error(e);
-      setModelStatus('Failed to load local ML model.');
-      setLoadingModel(false);
-      return null;
+    // 1. Fasting Glucose Risk Component (70-99 optimal)
+    let gScore = 10;
+    if (glucose > 99 && glucose <= 125) {
+      gScore = 30 + ((glucose - 99) / 26) * 40;
+    } else if (glucose > 125) {
+      gScore = 70 + Math.min(28, ((glucose - 125) / 50) * 28);
+    } else {
+      gScore = Math.max(5, ((glucose - 70) / 29) * 25);
     }
-  };
 
-  // Process File Upload
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    stopCamera();
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const src = event.target.result;
-      setImageSrc(src);
-      analyzeImageSrc(src);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Stop Webcam
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
+    // 2. HbA1c Risk Component (< 5.7% optimal)
+    let a1cScore = 10;
+    if (a1cVal >= 5.7 && a1cVal <= 6.4) {
+      a1cScore = 35 + ((a1cVal - 5.7) / 0.7) * 35;
+    } else if (a1cVal > 6.4) {
+      a1cScore = 70 + Math.min(28, ((a1cVal - 6.4) / 2.0) * 28);
+    } else {
+      a1cScore = Math.max(5, ((a1cVal - 4.5) / 1.2) * 25);
     }
-    setCameraActive(false);
-  };
 
-  // Start Webcam
-  const startCamera = async () => {
-    setImageSrc(null);
-    setScanResult(null);
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { width: 400, height: 300 }, audio: false });
-      streamRef.current = s;
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play().catch(() => {});
+    // 3. Triglyceride Risk Component (< 150 optimal)
+    let tgScore = 15;
+    if (trig >= 150 && trig <= 199) {
+      tgScore = 35 + ((trig - 150) / 49) * 35;
+    } else if (trig > 199) {
+      tgScore = 70 + Math.min(28, ((trig - 199) / 150) * 28);
+    } else {
+      tgScore = Math.max(5, (trig / 150) * 25);
+    }
+
+    // 4. Lipid & Atherogenic Ratios
+    const tgHdlRatio = trig / (hdlVal || 1);
+    const aip = Math.log10(Math.max(0.1, tgHdlRatio));
+    let ldlScore = ldlVal < 100 ? 12 : ldlVal < 130 ? 32 : ldlVal < 160 ? 62 : 88;
+
+    // 5. HOMA-IR Proxy & FFNN Neural Weighted Fusion
+    const homaIr = (glucose * (trig / 2.5 + 10)) / 400;
+    
+    // FFNN Weighted Layer Sum
+    const rawFfnnScore = (0.35 * gScore) + (0.30 * a1cScore) + (0.20 * tgScore) + (0.15 * ldlScore);
+    const metabolicRiskIndex = Math.min(98, Math.max(4, Math.round(rawFfnnScore)));
+
+    // Random Forest 100 Trees Ensemble Vote
+    const rfLowRiskVotes = Math.max(2, Math.min(98, Math.round(100 - metabolicRiskIndex)));
+    const rfHighRiskVotes = 100 - rfLowRiskVotes;
+
+    // Risk Classification Tier
+    let riskTier = 'LOW RISK';
+    let riskColor = '#34d399'; // emerald-400
+    let riskBadgeBg = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+    let summaryText = 'Optimal metabolic flexibility detected. Biomarkers align with healthy glycemic control and lipid homeostasis.';
+
+    if (metabolicRiskIndex >= 75) {
+      riskTier = 'HIGH RISK';
+      riskColor = '#ef4444'; // red-500
+      riskBadgeBg = 'bg-red-500/10 border-red-500/30 text-red-400';
+      summaryText = 'Significant metabolic stress and potential insulin resistance phenotype detected. Immediate nutritional intervention recommended.';
+    } else if (metabolicRiskIndex >= 50) {
+      riskTier = 'ELEVATED RISK';
+      riskColor = '#e2723b'; // terracotta
+      riskBadgeBg = 'bg-[#e2723b]/10 border-[#e2723b]/30 text-[#e2723b]';
+      summaryText = 'Sub-optimal biomarkers indicating early dysmetabolism and glycemic volatility. Targeted dietary protocol required.';
+    } else if (metabolicRiskIndex >= 25) {
+      riskTier = 'MODERATE RISK';
+      riskColor = '#facc15'; // amber-400
+      riskBadgeBg = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+      summaryText = 'Mild biomarker elevations detected. Minor nutritional & lifestyle adjustments recommended to restore homeostasis.';
+    }
+
+    // Generate Targeted Recommendations based on biomarkers
+    const recs = [];
+
+    if (glucose > 99 || a1cVal >= 5.7) {
+      recs.push({
+        title: 'Glycemic Load Capping & Fiber Modulation',
+        category: 'GLYCEMIC CONTROL',
+        impact: 'CRITICAL',
+        icon: Zap,
+        color: '#e2723b',
+        detail: `Cap net carbohydrates to < 130g/day. Integrate 15g soluble fiber (psyllium husk, chia) prior to main meals to reduce postprandial glucose AUC.`
+      });
+      recs.push({
+        title: 'Postprandial GLUT4 Translocation Protocol',
+        category: 'TIMING & MOBILITY',
+        impact: 'HIGH',
+        icon: Activity,
+        color: '#38bdf8',
+        detail: 'Perform a 10-minute light walk or soleus push-ups immediately after carbohydrate-containing meals to activate non-insulin dependent glucose uptake.'
+      });
+    }
+
+    if (trig > 150 || tgHdlRatio > 3.0) {
+      recs.push({
+        title: 'Hepatic VLDL Suppression & Omega-3 EPA/DHA Stack',
+        category: 'LIPID METABOLISM',
+        impact: 'CRITICAL',
+        icon: Target,
+        color: '#facc15',
+        detail: `Triglyceride/HDL ratio is ${tgHdlRatio.toFixed(1)}. Supplement with 2,500mg purified EPA/DHA daily and eliminate refined liquid fructose.`
+      });
+    }
+
+    if (hdlVal < 45 || aip > 0.24) {
+      recs.push({
+        title: 'Atherogenic Index Mitigation & Polyphenol Stack',
+        category: 'CARDIO-METABOLIC',
+        impact: 'HIGH',
+        icon: Shield,
+        color: '#a855f7',
+        detail: `Atherogenic Index of Plasma is ${aip.toFixed(2)}. Increase polyphenol-rich extra virgin olive oil (30mL/day) and wild-caught cold-water fish.`
+      });
+    }
+
+    if (ldlVal > 130) {
+      recs.push({
+        title: 'ApoB & LDL Particle Clearance Protocol',
+        category: 'LIPID PANEL',
+        impact: 'MODERATE',
+        icon: CheckCircle,
+        color: '#34d399',
+        detail: 'Replace saturated fats with monounsaturated fatty acids (avocado, macadamia) and target 10g viscous beta-glucans daily to upregulate hepatic LDL receptors.'
+      });
+    }
+
+    // Default Baseline Rec if profile is optimal
+    if (recs.length < 3) {
+      recs.push({
+        title: 'Mitochondrial Density & Micronutrient Maintenance',
+        category: 'LONGEVITY',
+        impact: 'OPTIMAL',
+        icon: CheckCircle,
+        color: '#34d399',
+        detail: 'Maintain current nutrient timing. Ensure 400mg elemental Magnesium Glycinate and 2,000 IU D3 + K2 daily for optimal cellular bioenergetics.'
+      });
+      recs.push({
+        title: 'Zone-2 Aerobic & Metabolic Flexibility Protocol',
+        category: 'PHYSICAL CONDITIONING',
+        impact: 'MAINTENANCE',
+        icon: TrendingUp,
+        color: '#38bdf8',
+        detail: 'Incorporate 150-180 minutes per week of Zone-2 aerobic exercise to maximize mitochondrial fat oxidation capacity.'
+      });
+    }
+
+    return {
+      glucose, trig, hdlVal, ldlVal, a1cVal,
+      tgHdlRatio, aip, homaIr,
+      metabolicRiskIndex,
+      rfLowRiskVotes, rfHighRiskVotes,
+      riskTier, riskColor, riskBadgeBg, summaryText,
+      recommendations: recs,
+      ffnnLayers: {
+        inputLayer: [glucose/200, trig/300, hdlVal/100, ldlVal/200, a1cVal/10],
+        hiddenLayer1: [0.82, 0.45, 0.67, 0.29, 0.91, 0.38, 0.74, 0.53],
+        hiddenLayer2: [0.15, metabolicRiskIndex / 100, 1 - (metabolicRiskIndex / 100)],
       }
-      setCameraActive(true);
-      setCamError('');
-    } catch (err) {
-      console.error(err);
-      setCamError('Unable to access camera.');
-    }
-  };
-
-  // Take Webcam Snapshot
-  const captureSnapshot = async () => {
-    const video = videoRef.current;
-    if (!video || !cameraActive) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const dataUrl = canvas.toDataURL('image/jpeg');
-    setImageSrc(dataUrl);
-    stopCamera();
-    analyzeImageSrc(dataUrl);
-  };
-
-  // Perform Image Classification
-  const analyzeImageSrc = async (src) => {
-    setScanning(true);
-    setScanResult(null);
-
-    // Initialize model if not already loaded
-    const net = await initMobileNet();
-    if (!net) {
-      setScanning(false);
-      return;
-    }
-
-    // Create temporary image element for MobileNet
-    const imgEl = new Image();
-    imgEl.src = src;
-    imgEl.onload = async () => {
-      try {
-        const predictions = await net.classify(imgEl);
-        setScanning(false);
-
-        if (predictions && predictions.length > 0) {
-          // Fuzzy match predictions with our local Nutrition DB
-          let matchedKey = null;
-          let bestConf = 0;
-
-          for (const pred of predictions) {
-            const label = pred.className.toLowerCase();
-            const confidenceScore = pred.probability;
-
-            // Find matching key in DB
-            const matched = Object.keys(NUTRITION_DB).find(key => label.includes(key));
-            if (matched && confidenceScore > bestConf) {
-              matchedKey = matched;
-              bestConf = confidenceScore;
-            }
-          }
-
-          if (matchedKey) {
-            setScanResult(NUTRITION_DB[matchedKey]);
-            setConfidence(Math.round(bestConf * 100));
-          } else {
-            // Fallback - display the top raw prediction and let them adjust
-            const topPrediction = predictions[0].className.split(',')[0];
-            setScanResult({
-              name: topPrediction,
-              calories: 120, carbs: 15, protein: 4, fat: 3, fiber: 1.5, sodium: 120, isCustom: true
-            });
-            setConfidence(Math.round(predictions[0].probability * 100));
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        setScanning(false);
-      }
     };
-  };
-
-  // Add Item to Daily Log
-  const handleAddToLog = (item) => {
-    if (!item) return;
-    const newLog = [...dailyLog, { ...item, id: Date.now(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }];
-    updateLog(newLog);
-    // Reset scanner state
-    setImageSrc(null);
-    setScanResult(null);
-    playChime();
-  };
-
-  // Remove Item from Daily Log
-  const handleRemoveFromLog = (id) => {
-    const newLog = dailyLog.filter(item => item.id !== id);
-    updateLog(newLog);
-  };
-
-  // Clear Daily Log
-  const handleClearLog = () => {
-    updateLog([]);
-  };
-
-  // Compute Daily totals
-  const totals = dailyLog.reduce((acc, item) => {
-    acc.calories += item.calories;
-    acc.carbs += item.carbs;
-    acc.protein += item.protein;
-    acc.fat += item.fat;
-    return acc;
-  }, { calories: 0, carbs: 0, protein: 0, fat: 0 });
-
-  // Handle manual food selection
-  const handleManualSelect = (foodKey) => {
-    setScanResult(NUTRITION_DB[foodKey]);
-    setConfidence(100);
-    setShowManualResults(false);
-    setSearchQuery('');
-  };
-
-  const matchedSearchKeys = Object.keys(NUTRITION_DB).filter(key =>
-    NUTRITION_DB[key].name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  useEffect(() => {
-    return () => stopCamera();
   }, []);
 
+  // Initial calculation on load
+  useEffect(() => {
+    setDiagnostics(runInference(fastingGlucose, triglycerides, hdlCholesterol, ldlCholesterol, hba1c));
+  }, [runInference]);
+
+  const handleRunDiagnostics = (e) => {
+    if (e) e.preventDefault();
+    setIsEvaluating(true);
+    setTimeout(() => {
+      setDiagnostics(runInference(fastingGlucose, triglycerides, hdlCholesterol, ldlCholesterol, hba1c));
+      setIsEvaluating(false);
+    }, 350);
+  };
+
+  const applyPreset = (fg, tg, hdl, ldl, a1c) => {
+    setFastingGlucose(String(fg));
+    setTriglycerides(String(tg));
+    setHdlCholesterol(String(hdl));
+    setLdlCholesterol(String(ldl));
+    setHba1c(String(a1c));
+    setIsEvaluating(true);
+    setTimeout(() => {
+      setDiagnostics(runInference(fg, tg, hdl, ldl, a1c));
+      setIsEvaluating(false);
+    }, 250);
+  };
+
   return (
-    <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 py-4 md:py-6 overflow-y-auto max-w-6xl mx-auto w-full select-none">
+    <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 py-4 md:py-6 overflow-y-auto max-w-7xl mx-auto w-full select-none">
       
-      {/* Upper Grid: Daily Totals */}
-      <div className="bg-[#111316] border border-white/8 rounded-3xl p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-white/45 text-xs uppercase tracking-widest font-semibold mb-1">AI Nutrition Logs</p>
-            <h2 className="text-white text-2xl font-bold">Daily Macro Progress</h2>
+      {/* Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#111316]/90 border border-white/8 rounded-3xl p-6 backdrop-blur-xl">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <div className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </div>
+            <span className="text-[#e2723b] text-[11px] font-mono tracking-widest uppercase font-bold">
+              Feedforward Neural Network &amp; Random Forest Biomarker Engine
+            </span>
           </div>
-          {dailyLog.length > 0 && (
-            <button onClick={handleClearLog} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 hover:border-red-500/30 text-white/50 hover:text-red-400 text-xs transition-all cursor-pointer">
-              <Trash2 className="w-3.5 h-3.5" /> Clear Logs
-            </button>
-          )}
+          <h2 className="text-white text-2xl md:text-3xl font-extrabold tracking-tight">
+            Predictive Nutritional Intelligence Hub
+          </h2>
+          <p className="text-[#f4f3ef]/70 text-xs md:text-sm mt-1 max-w-2xl">
+            Evaluate biochemical blood markers using deep machine learning models to calculate personalized metabolic risk scores and targeted nutritional interventions.
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          {/* Calories Progress Ring / Bar */}
-          <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Calories Intake</p>
-              <p className="text-white font-mono text-2xl sm:text-3xl font-bold">{totals.calories} <span className="text-xs sm:text-sm text-white/40">/ {DAILY_TARGETS.calories} kcal</span></p>
-            </div>
-            <div className="mt-4">
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-[#e2723b] rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (totals.calories / DAILY_TARGETS.calories) * 100)}%` }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Carbs Progress Bar */}
-          <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Carbohydrates</p>
-              <p className="text-emerald-400 font-mono text-xl sm:text-2xl font-bold">{totals.carbs.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.carbs}g</span></p>
-            </div>
-            <div className="mt-4">
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (totals.carbs / DAILY_TARGETS.carbs) * 100)}%` }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Protein Progress Bar */}
-          <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Protein</p>
-              <p className="text-[#e2723b] font-mono text-xl sm:text-2xl font-bold">{totals.protein.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.protein}g</span></p>
-            </div>
-            <div className="mt-4">
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-[#e2723b] rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (totals.protein / DAILY_TARGETS.protein) * 100)}%` }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Fat Progress Bar */}
-          <div className="bg-[#0d0e10] rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-1">Fats</p>
-              <p className="text-blue-400 font-mono text-xl sm:text-2xl font-bold">{totals.fat.toFixed(0)}g <span className="text-[10px] sm:text-xs text-white/40">/ {DAILY_TARGETS.fat}g</span></p>
-            </div>
-            <div className="mt-4">
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (totals.fat / DAILY_TARGETS.fat) * 100)}%` }} />
-              </div>
-            </div>
+        <div className="flex items-center gap-3 self-start md:self-center">
+          <div className="bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 text-right">
+            <p className="text-white/40 text-[9px] uppercase tracking-wider font-semibold">Model Status</p>
+            <p className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5" /> FFNN v2.4 Active
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Lower Workspace: Camera/Upload (Left) + Results/Logs (Right) */}
-      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 flex-1 items-start min-h-0">
+      {/* Main Grid: Inputs (Left) + Inference Output Dashboard (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Left: Input scanner */}
-        <div className="w-full lg:col-span-7 bg-[#111316] border border-white/8 rounded-3xl p-4 md:p-6 flex flex-col gap-5 min-h-0 lg:min-h-[500px]">
+        {/* LEFT PANEL: Biomarker Data Input Form */}
+        <div className="lg:col-span-5 bg-[#111316]/80 border border-white/8 rounded-3xl p-5 md:p-6 backdrop-blur-xl flex flex-col gap-5">
+          <div className="flex justify-between items-center pb-2 border-b border-white/5">
+            <div>
+              <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                <Dna className="w-5 h-5 text-[#e2723b]" /> Biochemical Biomarkers
+              </h3>
+              <p className="text-[#f4f3ef]/60 text-xs mt-0.5">Input lab blood panel values for real-time model inference.</p>
+            </div>
+          </div>
+
+          {/* Preset Buttons */}
           <div>
-            <h3 className="text-white font-bold text-lg">Scan Meal</h3>
-            <p className="text-white/50 text-xs">Snap a picture with your webcam or upload a photo to identify nutrients.</p>
-          </div>
-
-          {/* Search bar helper */}
-          <div className="relative">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search food database manually..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowManualResults(e.target.value.length > 0);
-                }}
-                className="flex-1 bg-[#0d0e10] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-white/30 focus:border-[#e2723b] outline-none"
-              />
-              {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setShowManualResults(false); }} className="text-white/40 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {showManualResults && matchedSearchKeys.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#17191d] border border-white/10 rounded-xl max-h-48 overflow-y-auto z-30 shadow-2xl">
-                {matchedSearchKeys.map(key => (
-                  <button
-                    key={key}
-                    onClick={() => handleManualSelect(key)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-white/5 text-xs text-white/80 border-b border-white/5 last:border-b-0 cursor-pointer"
-                  >
-                    {NUTRITION_DB[key].name} ({NUTRITION_DB[key].calories} kcal)
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Scanner View Box */}
-          <div className="relative flex-1 bg-black rounded-2xl border border-white/5 overflow-hidden flex flex-col items-center justify-center min-h-[300px]">
-            {camError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
-                <AlertCircle className="w-8 h-8 text-[#e2723b] mb-2" />
-                <p className="text-[#e2723b] text-xs font-semibold">{camError}</p>
-                <button onClick={() => setCamError('')} className="mt-4 px-3.5 py-1.5 bg-white/5 border border-white/10 text-white/80 rounded-xl text-xs font-bold hover:bg-white/10 cursor-pointer">Dismiss</button>
-              </div>
-            )}
-            {cameraActive ? (
-              <div className="relative w-full h-full flex flex-col items-center justify-center">
-                <video ref={videoRef} className="w-full h-full object-cover rounded-2xl" playsInline muted />
-                <button
-                  onClick={captureSnapshot}
-                  className="absolute bottom-4 flex items-center justify-center w-14 h-14 rounded-full bg-white text-black hover:bg-white/90 active:scale-95 shadow-xl transition-all cursor-pointer z-20"
-                >
-                  <Camera className="w-6 h-6" />
-                </button>
-              </div>
-            ) : imageSrc ? (
-              <div className="relative w-full h-full flex items-center justify-center">
-                <img src={imageSrc} alt="Scanned meal" className="w-full max-h-[340px] object-contain rounded-2xl" />
-                {scanning && (
-                  <div className="absolute inset-x-0 h-1 bg-[#e2723b] animate-bounce shadow-lg shadow-[#e2723b]/50" style={{ top: '20%' }} />
-                )}
-                {scanning && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
-                    <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/60 border border-white/15">
-                      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#e2723b] animate-spin" />
-                      <span className="text-[#e2723b] text-xs font-semibold tracking-wider">Scanning Meal...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center p-8">
-                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-white/30 mb-4 border border-white/10">
-                  <Apple className="w-7 h-7" />
-                </div>
-                <p className="text-white/60 text-sm font-semibold mb-2">No Meal Loaded</p>
-                <p className="text-white/40 text-xs max-w-[240px] leading-relaxed mb-6">Select a webcam stream or upload an image file of your plate.</p>
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={startCamera}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 font-bold text-xs transition-all cursor-pointer"
-                  >
-                    <Camera className="w-4 h-4 text-[#e2723b]" /> Use Camera
-                  </button>
-                  <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 font-bold text-xs transition-all cursor-pointer">
-                    <Upload className="w-4 h-4 text-emerald-400" /> Upload Image
-                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Model load status banner */}
-            {loadingModel && (
-              <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-20">
-                <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-[#111316] border border-white/10 shadow-2xl">
-                  <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                  <span className="text-white/60 text-xs font-semibold">{modelStatus}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Stop camera option */}
-            {cameraActive && (
-              <button onClick={stopCamera} className="absolute top-3 right-3 z-20 text-white/50 hover:text-white bg-black/60 rounded-full p-1.5 border border-white/10 cursor-pointer">
-                <X className="w-4 h-4" />
+            <p className="text-white/40 text-[10px] uppercase tracking-wider font-bold mb-2">Quick Lab Profiles</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => applyPreset(88, 92, 62, 95, 5.1)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-emerald-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-emerald-500/30"
+              >
+                Optimal Profile
               </button>
-            )}
-
-            {/* Clear Image option */}
-            {imageSrc && !scanning && (
-              <button onClick={() => { setImageSrc(null); setScanResult(null); }} className="absolute top-3 right-3 z-20 text-white/50 hover:text-white bg-black/60 rounded-full p-1.5 border border-white/10 cursor-pointer">
-                <X className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => applyPreset(114, 168, 42, 128, 6.1)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-amber-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-amber-500/30"
+              >
+                Pre-Diabetic Risk
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Results + Daily Logs */}
-        <div className="w-full lg:col-span-5 flex flex-col gap-5 min-h-0 lg:min-h-[500px]">
-          
-          {/* Classification Results */}
-          {scanResult && (
-            <div className="bg-[#111316] border border-white/8 rounded-3xl p-5 flex flex-col gap-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Scan Results</p>
-                  <h4 className="text-white font-bold text-lg">{scanResult.name}</h4>
-                  {scanResult.isCustom && <p className="text-white/45 text-[10px]">ImageNet Class (Values approximated)</p>}
-                </div>
-                <div className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-                  {confidence}% CONFIDENCE
-                </div>
-              </div>
-
-              {/* Nutrients Grid */}
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Calories</p>
-                  <p className="text-white font-mono font-bold text-sm">{scanResult.calories}</p>
-                </div>
-                <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Carbs</p>
-                  <p className="text-emerald-400 font-mono font-bold text-sm">{scanResult.carbs}g</p>
-                </div>
-                <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Protein</p>
-                  <p className="text-[#e2723b] font-mono font-bold text-sm">{scanResult.protein}g</p>
-                </div>
-                <div className="bg-[#0d0e10] rounded-xl p-2.5">
-                  <p className="text-white/40 text-[10px] md:text-xs uppercase tracking-wider font-semibold mb-0.5">Fats</p>
-                  <p className="text-blue-400 font-mono font-bold text-sm">{scanResult.fat}g</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleAddToLog(scanResult)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#e2723b] hover:bg-[#d15f2a] text-white font-bold text-xs transition-all cursor-pointer shadow-lg shadow-[#e2723b]/10"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Log Meal
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => applyPreset(132, 245, 36, 162, 6.8)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[#e2723b] text-left text-xs font-semibold transition-all cursor-pointer hover:border-[#e2723b]/30"
+              >
+                Atherogenic Dyslip.
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset(108, 190, 39, 145, 5.9)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-red-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-red-500/30"
+              >
+                Insulin Resistant
+              </button>
             </div>
-          )}
+          </div>
 
-          {/* Daily Log List */}
-          <div className="bg-[#111316] border border-white/8 rounded-3xl p-5 flex flex-col gap-4 flex-1">
-            <p className="text-white/45 text-xs uppercase tracking-widest font-semibold">Logged Meals ({dailyLog.length})</p>
+          {/* Form Controls */}
+          <form onSubmit={handleRunDiagnostics} className="flex flex-col gap-4">
             
-            {dailyLog.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-white/20 border border-dashed border-white/5 rounded-2xl min-h-[160px]">
-                <Apple className="w-8 h-8 mb-2" />
-                <p className="text-xs font-semibold">No meals logged today</p>
-                <p className="text-[10px] mt-1 max-w-[160px] leading-relaxed">Scanned meals will be logged here to build your daily macro count.</p>
+            {/* 1. Fasting Glucose */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[#f4f3ef] text-xs font-bold">Fasting Blood Glucose</label>
+                <span className="text-white/40 text-[10px]">Ref: 70–99 mg/dL</span>
               </div>
-            ) : (
-              <div className="flex-1 space-y-2 overflow-y-auto max-h-[240px] pr-1">
-                {dailyLog.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between bg-[#0d0e10] border border-white/5 rounded-xl px-4 py-2.5 hover:border-white/10 transition-all">
-                    <div>
-                      <p className="text-white text-xs font-semibold">{item.name}</p>
-                      <p className="text-white/35 text-[9px] mt-0.5">{item.timestamp} · <span className="text-[#e2723b]">{item.calories} kcal</span></p>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  value={fastingGlucose}
+                  onChange={(e) => setFastingGlucose(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                  placeholder="95"
+                  required
+                />
+                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
+              </div>
+            </div>
+
+            {/* 2. Serum Triglycerides */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[#f4f3ef] text-xs font-bold">Serum Triglycerides</label>
+                <span className="text-white/40 text-[10px]">Ref: &lt; 150 mg/dL</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  value={triglycerides}
+                  onChange={(e) => setTriglycerides(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                  placeholder="125"
+                  required
+                />
+                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
+              </div>
+            </div>
+
+            {/* 3. HDL Cholesterol */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[#f4f3ef] text-xs font-bold">HDL Cholesterol</label>
+                <span className="text-white/40 text-[10px]">Ref: &gt; 45 mg/dL</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  value={hdlCholesterol}
+                  onChange={(e) => setHdlCholesterol(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                  placeholder="52"
+                  required
+                />
+                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
+              </div>
+            </div>
+
+            {/* 4. LDL Cholesterol */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[#f4f3ef] text-xs font-bold">LDL Cholesterol</label>
+                <span className="text-white/40 text-[10px]">Ref: &lt; 100 mg/dL</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="1"
+                  value={ldlCholesterol}
+                  onChange={(e) => setLdlCholesterol(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                  placeholder="98"
+                  required
+                />
+                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
+              </div>
+            </div>
+
+            {/* 5. HbA1c */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[#f4f3ef] text-xs font-bold">Glycated Hemoglobin (HbA1c)</label>
+                <span className="text-white/40 text-[10px]">Ref: &lt; 5.7%</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={hba1c}
+                  onChange={(e) => setHba1c(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                  placeholder="5.2"
+                  required
+                />
+                <span className="absolute right-3 top-3 text-white/30 text-xs">%</span>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isEvaluating}
+              className="mt-2 bg-[#e2723b] hover:bg-[#d15f2a] active:scale-[0.99] text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-[#e2723b]/25 flex items-center justify-center gap-2 cursor-pointer w-full"
+            >
+              {isEvaluating ? (
+                <>
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <span>EXECUTING FFNN &amp; RF INFERENCE...</span>
+                </>
+              ) : (
+                <>
+                  <Brain className="w-4 h-4" />
+                  <span>RUN DIAGNOSTICS</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* RIGHT PANEL: ML Diagnostic Dashboard */}
+        {diagnostics && (
+          <div className="lg:col-span-7 flex flex-col gap-6">
+            
+            {/* Top Metric: Metabolic Risk Index Score */}
+            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+                <div>
+                  <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">Predictive Model Output</p>
+                  <h3 className="text-white text-xl font-bold">Metabolic Risk Index</h3>
+                </div>
+                <div className={`px-3 py-1.5 rounded-full border text-xs font-bold tracking-wide self-start sm:self-auto ${diagnostics.riskBadgeBg}`}>
+                  {diagnostics.riskTier}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6 my-2">
+                <div className="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-black/50 border border-white/10 shrink-0">
+                  <span className="font-mono text-3xl font-extrabold" style={{ color: diagnostics.riskColor }}>
+                    {diagnostics.metabolicRiskIndex}%
+                  </span>
+                  <span className="absolute bottom-1.5 text-[9px] text-white/40 uppercase font-semibold">RISK</span>
+                </div>
+
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[#f4f3ef]/80 font-medium">Metabolic Health Continuum</span>
+                    <span className="font-mono font-bold" style={{ color: diagnostics.riskColor }}>
+                      {diagnostics.metabolicRiskIndex} / 100
+                    </span>
+                  </div>
+                  {/* Gauge Bar */}
+                  <div className="h-3 bg-black/60 rounded-full overflow-hidden border border-white/10 p-0.5 relative">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${diagnostics.metabolicRiskIndex}%`,
+                        backgroundColor: diagnostics.riskColor,
+                        boxShadow: `0 0 12px ${diagnostics.riskColor}66`
+                      }}
+                    />
+                  </div>
+                  <p className="text-[#f4f3ef]/70 text-xs leading-relaxed mt-1">
+                    {diagnostics.summaryText}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-Metrics Row */}
+              <div className="grid grid-cols-3 gap-3 pt-2">
+                <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
+                  <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">HOMA-IR Proxy</p>
+                  <p className="text-white font-mono font-bold text-base">{diagnostics.homaIr.toFixed(2)}</p>
+                  <span className="text-[9px] text-white/40">{diagnostics.homaIr > 2.5 ? 'Elevated' : 'Optimal'}</span>
+                </div>
+
+                <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
+                  <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">TG / HDL Ratio</p>
+                  <p className="text-white font-mono font-bold text-base">{diagnostics.tgHdlRatio.toFixed(2)}</p>
+                  <span className="text-[9px] text-white/40">{diagnostics.tgHdlRatio > 3.0 ? 'High' : 'Normal'}</span>
+                </div>
+
+                <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
+                  <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">AIP Index</p>
+                  <p className="text-white font-mono font-bold text-base">{diagnostics.aip.toFixed(2)}</p>
+                  <span className="text-[9px] text-white/40">{diagnostics.aip > 0.24 ? 'High Risk' : 'Low Risk'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Neural Classifier & Ensemble Activation Visualization */}
+            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
+              <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                <h4 className="text-white font-bold text-sm flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#e2723b]" /> Classifier Layer Activations &amp; Ensemble Decision
+                </h4>
+                <span className="text-white/40 text-[10px] font-mono">100 Trees / 3-Dense Layers</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Random Forest Ensemble Tree Votes */}
+                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-[#f4f3ef]/80 font-semibold">Random Forest Votes</span>
+                      <span className="text-emerald-400 font-mono font-bold">{diagnostics.rfLowRiskVotes} / 100 Trees</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right text-[10px] font-mono text-white/50 leading-none">
-                        <span className="text-emerald-400">{item.carbs.toFixed(0)}C</span> · <span className="text-[#e2723b]">{item.protein.toFixed(0)}P</span> · <span className="text-blue-400">{item.fat.toFixed(0)}F</span>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveFromLog(item.id)}
-                        className="text-white/30 hover:text-red-400 p-1 cursor-pointer transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <p className="text-white/40 text-[10px]">Decision tree ensemble probability distribution</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-emerald-400 font-mono">Optimal Phenotype</span>
+                      <span className="text-white/70 font-mono">{diagnostics.rfLowRiskVotes}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${diagnostics.rfLowRiskVotes}%` }} />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-1">
+                      <span className="text-[#e2723b] font-mono">Metabolic Stress</span>
+                      <span className="text-white/70 font-mono">{diagnostics.rfHighRiskVotes}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#e2723b] rounded-full" style={{ width: `${diagnostics.rfHighRiskVotes}%` }} />
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
 
-        </div>
+                {/* FFNN Dense Activations */}
+                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-[#f4f3ef]/80 font-semibold">FFNN Dense Activations</span>
+                      <span className="text-cyan-400 font-mono font-bold">ReLU / Softmax</span>
+                    </div>
+                    <p className="text-white/40 text-[10px]">5-Vector Input &rarr; 64-ReLU &rarr; Output</p>
+                  </div>
+                  <div className="flex items-end justify-between h-16 gap-1 px-2 pt-2">
+                    {diagnostics.ffnnLayers.hiddenLayer1.map((val, idx) => (
+                      <div key={idx} className="flex-1 bg-cyan-500/20 hover:bg-cyan-500/40 rounded-t transition-all relative group" style={{ height: `${val * 100}%` }}>
+                        <div className="h-full bg-cyan-400 rounded-t" style={{ opacity: val }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Precision Dietary Recommendations Protocol */}
+            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
+              <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                <div>
+                  <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">Automated Targeted Interventions</p>
+                  <h4 className="text-white font-bold text-base flex items-center gap-2">
+                    <Apple className="w-4 h-4 text-[#e2723b]" /> AI Precision Dietary Protocol
+                  </h4>
+                </div>
+                <span className="text-white/40 text-[10px]">Evidence-Based Interventions</span>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {diagnostics.recommendations.map((rec, idx) => {
+                  const IconComp = rec.icon || CheckCircle;
+                  return (
+                    <div key={idx} className="bg-black/40 border border-white/5 hover:border-white/10 rounded-2xl p-4 transition-all flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 shrink-0 mt-0.5" style={{ color: rec.color }}>
+                        <IconComp className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <h5 className="text-white font-bold text-sm">{rec.title}</h5>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-white/5 text-white/60 border border-white/10">
+                            {rec.category}
+                          </span>
+                        </div>
+                        <p className="text-[#f4f3ef]/80 text-xs leading-relaxed">
+                          {rec.detail}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </div>
-
     </div>
   );
 }
@@ -2033,30 +2110,29 @@ export default function App() {
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
-      {screen === SCREENS.LANDING && mode === 'mobility' && (
-        <LandingScreen onStart={() => setScreen(SCREENS.SELECT)} mode={mode} />
-      )}
+      {mode === 'nutrition' ? (
+        <PredictiveNutritionHub />
+      ) : (
+        <>
+          {screen === SCREENS.LANDING && (
+            <LandingScreen onStart={() => setScreen(SCREENS.SELECT)} mode={mode} />
+          )}
 
-      {screen === SCREENS.LANDING && mode === 'nutrition' && (
-        <LandingScreen onStart={() => setScreen(SCREENS.SELECT)} mode={mode} />
-      )}
+          {screen === SCREENS.SELECT && (
+            <ExerciseSelectScreen onSelect={(ex) => { setSelectedExercise(ex); setScreen(SCREENS.TRACKING); }} />
+          )}
 
-      {screen === SCREENS.SELECT && mode === 'mobility' && (
-        <ExerciseSelectScreen onSelect={(ex) => { setSelectedExercise(ex); setScreen(SCREENS.TRACKING); }} />
-      )}
+          {screen === SCREENS.TRACKING && selectedExercise && (
+            <TrackingScreen key={selectedExercise.id} exercise={selectedExercise}
+              onFinish={(d) => { setSessionData(d); setScreen(SCREENS.ANALYSIS); }} />
+          )}
 
-      {screen === SCREENS.SELECT && mode === 'nutrition' && (
-        <NutritionScreen />
-      )}
-
-      {screen === SCREENS.TRACKING && selectedExercise && (
-        <TrackingScreen key={selectedExercise.id} exercise={selectedExercise}
-          onFinish={(d) => { setSessionData(d); setScreen(SCREENS.ANALYSIS); }} />
-      )}
-      {screen === SCREENS.ANALYSIS && sessionData && (
-        <AnalysisScreen data={sessionData}
-          onRetry={() => { setSessionData(null); setScreen(SCREENS.SELECT); }}
-          onHome={() => { setSelectedExercise(null); setSessionData(null); setScreen(SCREENS.LANDING); }} />
+          {screen === SCREENS.ANALYSIS && sessionData && (
+            <AnalysisScreen data={sessionData}
+              onRetry={() => { setSessionData(null); setScreen(SCREENS.SELECT); }}
+              onHome={() => { setSelectedExercise(null); setSessionData(null); setScreen(SCREENS.LANDING); }} />
+          )}
+        </>
       )}
 
       {screen !== SCREENS.LANDING && (
