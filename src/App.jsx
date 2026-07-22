@@ -25,16 +25,16 @@ const FRAG_SRC = `
   uniform float u_time;
   uniform vec2  u_res;
 
-  // ── "NEBULA" EARTHY SPECTRUM ─ Anchored at deep warm obsidian ─────
-  // Core Highlight: Dusty Terracotta #c25c30 → vec3(0.761, 0.361, 0.188)
-  // Mid-tones: Deep Burnt Sienna    #7a2e15 → vec3(0.478, 0.180, 0.082)
-  // Shadows/Edges: Dark Espresso    #261007 → vec3(0.149, 0.063, 0.027)
-  // Deep Warm Base: Warm Obsidian   #0a0604 → vec3(0.039, 0.024, 0.016)
+  // ── VIBRANT DYNAMIC NEBULA ─ Anchored at warm obsidian base ─────
+  // Core Highlight: Vibrant Terracotta #e2723b → vec3(0.886, 0.447, 0.231)
+  // Mid-tones: Deep Burnt Orange      #9a3412 → vec3(0.604, 0.204, 0.071)
+  // Shadows: Dark Bronze               #451a03 → vec3(0.271, 0.102, 0.012)
+  // Base: Warm Obsidian                #0a0604 → vec3(0.039, 0.024, 0.016)
 
-  vec3 C_DARK     = vec3(0.039, 0.024, 0.016);
-  vec3 C_TERRA    = vec3(0.761, 0.361, 0.188);
-  vec3 C_SIENNA   = vec3(0.478, 0.180, 0.082);
-  vec3 C_ESPRESSO = vec3(0.149, 0.063, 0.027);
+  vec3 C_DARK   = vec3(0.039, 0.024, 0.016);
+  vec3 C_BRONZE = vec3(0.271, 0.102, 0.012);
+  vec3 C_ORANGE = vec3(0.604, 0.204, 0.071);
+  vec3 C_TERRA  = vec3(0.886, 0.447, 0.231);
 
   // fast hash for fbm noise
   float hash(vec2 p) {
@@ -43,7 +43,7 @@ const FRAG_SRC = `
     return fract(p.x * p.y);
   }
 
-  // high-frequency pixel noise for tactile matte finish (prevents banding)
+  // high-frequency pixel noise for tactile matte finish
   float random(vec2 st) {
     return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
   }
@@ -60,7 +60,7 @@ const FRAG_SRC = `
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
   }
 
-  // 3-octave fbm for volumetric nebula
+  // 3-octave fbm for volumetric fluid sweeps
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
@@ -76,42 +76,42 @@ const FRAG_SRC = `
     vec2 uv = gl_FragCoord.xy / u_res;
     uv.x *= u_res.x / u_res.y;
 
-    // Localize nebula drift toward center-right
+    // Center-right localized fluid flow
     uv -= vec2(0.18, 0.05);
-    uv *= 0.65;
+    uv *= 0.70;
 
-    // Slow, organic time drive
-    float t = u_time * 0.035;
+    // Increased dynamic time drive (u_time * 0.28 for live fluid motion)
+    float t = u_time * 0.28;
 
-    // Double domain-warp for soft volumetric smoke folds
+    // Double domain-warp for swirling fluid smoke folds
     vec2 q = vec2(fbm(uv + vec2(0.00, t)),
-                  fbm(uv + vec2(5.20, 1.30 + t * 0.60)));
-    vec2 r = vec2(fbm(uv + 4.5 * q + vec2(1.70, 9.20 + t * 0.40)),
-                  fbm(uv + 4.5 * q + vec2(8.30, 2.80 + t * 0.25)));
+                  fbm(uv + vec2(5.20, 1.30 + t * 0.70)));
+    vec2 r = vec2(fbm(uv + 4.5 * q + vec2(1.70, 9.20 + t * 0.45)),
+                  fbm(uv + 4.5 * q + vec2(8.30, 2.80 + t * 0.30)));
     float f = fbm(uv + 4.5 * r);
 
-    // Soft feathered volumetric weights
-    float wA = smoothstep(0.25, 0.80, f);
-    float wB = smoothstep(0.30, 0.82, q.x + 0.35 * f);
-    float wC = smoothstep(0.20, 0.75, r.y + 0.30 * f);
+    // Dynamic volumetric weights
+    float wA = smoothstep(0.20, 0.75, f);
+    float wB = smoothstep(0.28, 0.80, q.x + 0.40 * f);
+    float wC = smoothstep(0.35, 0.85, r.y + 0.45 * f);
 
-    // Sequential mix into warm obsidian base
+    // Sequential mix: dark base -> bronze -> burnt orange -> vibrant terracotta
     vec3 col = C_DARK;
-    col = mix(col, C_ESPRESSO, wA * 0.75);
-    col = mix(col, C_SIENNA,   wB * 0.55);
-    col = mix(col, C_TERRA,    wC * 0.45);
+    col = mix(col, C_BRONZE, wA * 0.85);
+    col = mix(col, C_ORANGE, wB * 0.65);
+    col = mix(col, C_TERRA,  wC * 0.55);
 
-    // Exposure hard-cap at 0.45 (zero light blowout / zero pure white)
+    // Exposure cap at 0.65 (vibrant glowing highlights without text blowout)
     float maxL = max(col.r, max(col.g, col.b));
-    if (maxL > 0.45) col *= 0.45 / maxL;
+    if (maxL > 0.65) col *= 0.65 / maxL;
 
-    // Tactile matte film grain overlay (12% amplitude, non-repeating)
+    // Tactile matte noise overlay
     float matteNoise = (random(gl_FragCoord.xy + fract(u_time * 19.0)) - 0.5) * 0.035;
     col = clamp(col + matteNoise, 0.0, 1.0);
 
-    // Vignette: gentle pull to warm obsidian edges
+    // Vignette
     vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
-    float vig = 1.0 - smoothstep(0.22, 0.85, length(cv) * 1.25);
+    float vig = 1.0 - smoothstep(0.25, 0.88, length(cv) * 1.20);
     col *= vig;
 
     gl_FragColor = vec4(col, 1.0);
@@ -207,7 +207,7 @@ function FluidShaderBackground() {
         zIndex: -2,
         pointerEvents: 'none',
         display: 'block',
-        opacity: 0.55,
+        opacity: 0.85,
       }}
     />
   );
