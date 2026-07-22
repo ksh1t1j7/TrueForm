@@ -1213,53 +1213,181 @@ function TrackingScreen({ exercise, onFinish }) {
     return () => clearInterval(iv);
   }, []);
 
+  const isSimulatingRef = useRef(false);
+
   /* Initialize Camera and Model */
-  useEffect(() => {
-    isMountedRef.current = true;
-    (async () => {
+  const initCameraAndModel = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    setCamError('');
+    setCamActive(false);
+    isSimulatingRef.current = false;
+    setModelStatus('Requesting camera access...');
+
+    let s = null;
+    try {
+      // 1. Try to get media stream with fallback constraints
       try {
-        // 1. Load Camera
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, facingMode: 'user' }, audio: false
+        s = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false
         });
-        if (!isMountedRef.current) { s.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = s;
-        if (videoRef.current) { 
-          videoRef.current.srcObject = s; 
-          await videoRef.current.play().catch(() => {}); 
-        }
-        setCamActive(true);
-        
-        // 2. Load TFJS Model
-        setModelStatus('Initializing TensorFlow.js...');
+      } catch (err1) {
+        console.warn("Ideal video constraints failed, trying default constraints:", err1);
+        s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      if (!isMountedRef.current) {
+        if (s) s.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      streamRef.current = s;
+      if (videoRef.current) {
+        videoRef.current.srcObject = s;
+        await videoRef.current.play().catch(e => console.warn("Video play error:", e));
+      }
+      setCamActive(true);
+
+    } catch (camErr) {
+      console.warn("Webcam access unavailable:", camErr);
+      if (!isMountedRef.current) return;
+      setCamError('Camera access denied or unavailable. You can retry or use the simulator.');
+      setModelStatus('');
+      return;
+    }
+
+    // 2. Initialize TF.js Backend with fallback to CPU if WebGL fails
+    try {
+      setModelStatus('Initializing TensorFlow.js...');
+      try {
         await tf.setBackend('webgl');
         await tf.ready();
-        
-        setModelStatus('Loading MoveNet Pose Model...');
-        const detectorConfig = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
-        detectorRef.current = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
-        
-        if (isMountedRef.current) setModelStatus('');
-
-      } catch (err) {
-        if (!isMountedRef.current) return;
-        console.error(err);
-        setCamError('Hardware acceleration or camera access failed.');
-        setCamActive(false); 
-        setModelStatus('');
+      } catch (webglErr) {
+        console.warn("WebGL backend unavailable for TF.js, using CPU fallback...", webglErr);
+        try {
+          await tf.setBackend('cpu');
+          await tf.ready();
+        } catch (cpuErr) {
+          console.warn("CPU backend setup error:", cpuErr);
+        }
       }
-    })();
+
+      setModelStatus('Loading MoveNet Pose Model...');
+      const detectorConfig = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
+      detectorRef.current = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+
+      if (isMountedRef.current) setModelStatus('');
+
+    } catch (modelErr) {
+      console.error("TF.js MoveNet initialization error:", modelErr);
+      if (isMountedRef.current) setModelStatus('');
+    }
+  }, []);
+
+  const startSimulationMode = () => {
+    setCamError('');
+    setModelStatus('');
+    setCamActive(true);
+    isSimulatingRef.current = true;
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    initCameraAndModel();
     return () => {
       isMountedRef.current = false;
       if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
       if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     };
-  }, []);
+  }, [initCameraAndModel]);
 
   /* ML Inference Loop */
   const runDetection = useCallback(async () => {
     if (!isMountedRef.current) return;
-    
+
+    // ── Simulated Motion Loop (Fallback if webcam unavailable) ──
+    if (isSimulatingRef.current) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          canvas.width = canvas.clientWidth || 640;
+          canvas.height = canvas.clientHeight || 480;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          const t = performance.now() / 1000;
+          const cycle = (Math.sin(t * 1.5) + 1) / 2; // 0 to 1
+          const simAngle = exercise.targetRange.min * 0.2 + cycle * (exercise.targetRange.max * 1.05);
+
+          // Draw simulated skeleton
+          const cx = canvas.width / 2;
+          const cy = canvas.height / 2;
+          const armLen = 110;
+          const rad = (simAngle * Math.PI) / 180;
+
+          const p1 = { x: cx - 40, y: cy - 40 };
+          const p2 = { x: cx, y: cy + 30 };
+          const p3 = { x: cx + armLen * Math.cos(rad), y: cy + 30 - armLen * Math.sin(rad) };
+
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+          ctx.stroke();
+
+          [p1, p2, p3].forEach(pt => {
+            ctx.fillStyle = '#e2723b';
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
+          });
+
+          // Kinematic update
+          smoothedAngleRef.current += (simAngle - smoothedAngleRef.current) * 0.25;
+          const activeAngle = smoothedAngleRef.current;
+
+          const now = performance.now();
+          const dt = (now - prevTimeRef.current) / 1000;
+          prevTimeRef.current = now;
+
+          const peakLimit = exercise.targetRange.min;
+          const restLimit = 25;
+
+          if (activeAngle > peakLimit && !isFlexingRef.current) {
+            isFlexingRef.current = true;
+          } else if (activeAngle < restLimit && isFlexingRef.current) {
+            isFlexingRef.current = false;
+            repCountRef.current += 1;
+            playChime();
+          }
+
+          if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
+          const vel = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
+          prevAngleRef.current = activeAngle;
+
+          historyRef.current.push(activeAngle);
+          if (historyRef.current.length > 600) historyRef.current.shift();
+
+          const tMin = exercise.targetRange.min;
+          const tMax = exercise.targetRange.max;
+          const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
+          formScoreRef.current = historyRef.current.length > 0 ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
+
+          frameSkipRef.current++;
+          if (frameSkipRef.current % 4 === 0 && isMountedRef.current) {
+            setUiAngle(activeAngle);
+            setUiVel(vel);
+            setUiReps(repCountRef.current);
+            setUiPeak(peakAngleRef.current);
+            setUiForm(formScoreRef.current);
+            setUiMoving(true);
+            setUiFlexing(isFlexingRef.current);
+          }
+        }
+      }
+      if (isMountedRef.current) animRef.current = requestAnimationFrame(runDetection);
+      return;
+    }
+
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -1277,7 +1405,7 @@ function TrackingScreen({ exercise, onFinish }) {
 
         // Run inference
         const poses = await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
-        
+
         let calculatedAngle = 0;
         let isUserMoving = false;
 
@@ -1288,57 +1416,42 @@ function TrackingScreen({ exercise, onFinish }) {
 
           // ── Kinematic Math ──
           if (exercise.id === 'head_rotation') {
-            // Track head yaw using ear and nose relationships
             if (kMap.nose && kMap.left_ear && kMap.right_ear) {
               const earDist = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
               const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
-              // How far does the nose deviate from the center of the ears horizontally?
               const dx = Math.abs(kMap.nose.x - earCenter);
-              // Map this ratio to a raw angle (approx 90 deg max)
               const rawAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
               calculatedAngle = rawAngle;
               isUserMoving = true;
             }
-          } else if (exercise.id === 'arm_rotation') {
-            // Track shoulder abduction/flexion
-            const rightValid = kMap.right_shoulder && kMap.right_elbow;
-            const leftValid = kMap.left_shoulder && kMap.left_elbow;
-            
-            let rAngle = 0, lAngle = 0;
-            // Vector from shoulder to elbow relative to straight down (0, 1)
-            if (rightValid) {
-              const len = Math.hypot(kMap.right_elbow.x - kMap.right_shoulder.x, kMap.right_elbow.y - kMap.right_shoulder.y);
-              const vy = (kMap.right_elbow.y - kMap.right_shoulder.y) / len;
-              rAngle = Math.acos(vy) * 180 / Math.PI;
-            }
-            if (leftValid) {
-              const len = Math.hypot(kMap.left_elbow.x - kMap.left_shoulder.x, kMap.left_elbow.y - kMap.left_shoulder.y);
-              const vy = (kMap.left_elbow.y - kMap.left_shoulder.y) / len;
-              lAngle = Math.acos(vy) * 180 / Math.PI;
-            }
-            
-            if (rightValid || leftValid) {
-              calculatedAngle = Math.max(rAngle, lAngle); // Track whichever arm is higher
+          } else {
+            const p1 = kMap[exercise.joints[0]];
+            const p2 = kMap[exercise.joints[1]];
+            const p3 = kMap[exercise.joints[2]];
+            if (p1 && p2 && p3) {
+              calculatedAngle = calcAngle3P(p1, p2, p3);
               isUserMoving = true;
             }
           }
 
-          // Draw active skeleton on canvas
-          ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-          const drawBone = (p1, p2) => {
-            if (kMap[p1] && kMap[p2]) {
-              ctx.beginPath(); ctx.moveTo(kMap[p1].x, kMap[p1].y); ctx.lineTo(kMap[p2].x, kMap[p2].y); ctx.stroke();
+          // Draw Skeleton Overlay
+          const drawBone = (nameA, nameB) => {
+            if (kMap[nameA] && kMap[nameB]) {
+              ctx.strokeStyle = '#e2723b';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.moveTo(kMap[nameA].x, kMap[nameA].y);
+              ctx.lineTo(kMap[nameB].x, kMap[nameB].y);
+              ctx.stroke();
             }
           };
 
-          // Draw torso and arms to look cool
-          drawBone('left_shoulder', 'right_shoulder');
-          drawBone('left_shoulder', 'left_elbow'); drawBone('left_elbow', 'left_wrist');
-          drawBone('right_shoulder', 'right_elbow'); drawBone('right_elbow', 'right_wrist');
-          
           if (exercise.id === 'head_rotation') {
              drawBone('nose', 'left_eye'); drawBone('left_eye', 'left_ear');
              drawBone('nose', 'right_eye'); drawBone('right_eye', 'right_ear');
+          } else {
+             drawBone(exercise.joints[0], exercise.joints[1]);
+             drawBone(exercise.joints[1], exercise.joints[2]);
           }
 
           Object.values(kMap).forEach(k => {
@@ -1351,14 +1464,14 @@ function TrackingScreen({ exercise, onFinish }) {
         // Low-pass filter for smooth UI display
         smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
         const activeAngle = smoothedAngleRef.current;
-        
+
         // Rep counting logic
         const now = performance.now();
         const dt = (now - prevTimeRef.current) / 1000;
         prevTimeRef.current = now;
 
-        const peakLimit = exercise.targetRange.min; // e.g. 45 or 90
-        const restLimit = exercise.id === 'head_rotation' ? 20 : 35; // neutral return thresholds
+        const peakLimit = exercise.targetRange.min;
+        const restLimit = exercise.id === 'head_rotation' ? 20 : 35;
 
         if (activeAngle > peakLimit && !isFlexingRef.current) {
           isFlexingRef.current = true;
@@ -1406,8 +1519,8 @@ function TrackingScreen({ exercise, onFinish }) {
   }, [exercise]);
 
   useEffect(() => {
-    // Start loop when model and camera are ready
-    if (camActive && !modelStatus && !animRef.current) {
+    // Start loop when model and camera (or simulator) are ready
+    if ((camActive || isSimulatingRef.current) && !modelStatus && !animRef.current) {
       prevTimeRef.current = performance.now();
       animRef.current = requestAnimationFrame(runDetection);
     }
