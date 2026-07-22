@@ -12,6 +12,190 @@ const tf = window.tf;
 const poseDetection = window.poseDetection;
 const mobilenet = window.mobilenet;
 
+/* ─── FluidShaderBackground ─────────────────────────────────── */
+const VERT_SRC = `
+  attribute vec2 a_pos;
+  void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
+`;
+
+const FRAG_SRC = `
+  precision mediump float;
+  uniform float u_time;
+  uniform vec2  u_res;
+
+  // ── palette ──────────────────────────────────────────────────
+  // sage green  rgb(160,224,171) → #a0e0ab
+  // amber       rgb(255,172,46)  → #ffac2e
+  // oxblood     rgb(165,45,37)   → #a52d25
+  // near-black  rgb(8,8,10)      → base canvas
+
+  vec3 C_GREEN   = vec3(0.627, 0.878, 0.671);
+  vec3 C_AMBER   = vec3(1.000, 0.675, 0.180);
+  vec3 C_OX      = vec3(0.647, 0.176, 0.145);
+  vec3 C_DARK    = vec3(0.031, 0.031, 0.039);
+
+  // fast hash for domain warp
+  float hash(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 17.5);
+    return fract(p.x * p.y);
+  }
+
+  // smooth value noise
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+
+  // 3-octave fbm (domain warp)
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 3; i++) {
+      v += a * noise(p);
+      p  = p * 2.1 + vec2(3.7, 1.3);
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / u_res;
+    // keep aspect ratio
+    uv.x *= u_res.x / u_res.y;
+
+    float t = u_time * 0.08;
+
+    // ── domain warp ───────────────────────────────────────────
+    vec2 q = vec2(fbm(uv + vec2(0.0, t)),
+                  fbm(uv + vec2(5.2, 1.3 + t * 0.7)));
+    vec2 r = vec2(fbm(uv + 4.0 * q + vec2(1.7, 9.2 + t * 0.5)),
+                  fbm(uv + 4.0 * q + vec2(8.3, 2.8 + t * 0.3)));
+    float f = fbm(uv + 4.0 * r);
+
+    // ── colour field ──────────────────────────────────────────
+    // three colour "blobs" driven by different warp channels
+    float wA = smoothstep(0.40, 0.75, f);              // green blob
+    float wB = smoothstep(0.55, 0.85, q.x + 0.5 * f); // amber blob
+    float wC = smoothstep(0.35, 0.70, r.y + 0.3 * f); // oxblood blob
+
+    vec3 col = C_DARK;
+    col = mix(col, C_GREEN, wA * 0.45);
+    col = mix(col, C_AMBER, wB * 0.38);
+    col = mix(col, C_OX,   wC * 0.30);
+
+    // ── centre vignette (pulls edges to black) ────────────────
+    vec2 cv = (gl_FragCoord.xy / u_res) - 0.5;
+    float vig = 1.0 - smoothstep(0.35, 0.85, length(cv) * 1.4);
+    col *= vig;
+
+    // ── global exposure ───────────────────────────────────────
+    col *= 0.78;
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+function FluidShaderBackground() {
+  const canvasRef = useRef(null);
+  const glRef     = useRef(null);
+  const rafRef    = useRef(null);
+  const progRef   = useRef(null);
+  const uTimeRef  = useRef(null);
+  const uResRef   = useRef(null);
+  const startRef  = useRef(performance.now());
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // ── init GL ───────────────────────────────────────────────
+    const gl = canvas.getContext('webgl', { antialias: false, alpha: false });
+    if (!gl) return; // fallback to CSS gradient gracefully
+    glRef.current = gl;
+
+    // compile shaders
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER,   VERT_SRC));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_SRC));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    progRef.current = prog;
+
+    // full-screen quad
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'a_pos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    uTimeRef.current = gl.getUniformLocation(prog, 'u_time');
+    uResRef.current  = gl.getUniformLocation(prog, 'u_res');
+
+    // ── resize ────────────────────────────────────────────────
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+    function resize() {
+      canvas.width  = Math.floor(window.innerWidth  * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ── render loop ───────────────────────────────────────────
+    let paused = false;
+    function draw() {
+      if (!paused) {
+        const t = (performance.now() - startRef.current) * 0.001;
+        gl.uniform1f(uTimeRef.current, t);
+        gl.uniform2f(uResRef.current, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    }
+    rafRef.current = requestAnimationFrame(draw);
+
+    // pause when tab is hidden
+    const onVis = () => { paused = document.hidden; };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', onVis);
+      gl.deleteProgram(prog);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        top: 0, left: 0,
+        width: '100%', height: '100%',
+        zIndex: -2,
+        pointerEvents: 'none',
+        display: 'block',
+      }}
+    />
+  );
+}
+
 /* ─── Constants ─────────────────────────────────────────────── */
 const EXERCISES = [
   {
@@ -1816,23 +2000,21 @@ export default function App() {
   };
 
   return (
-    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden bg-transparent relative z-0">
-      <div className="fixed inset-0 pointer-events-none flex items-center justify-center"
+    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#080808' }}>
+      {/* WebGL iridescent fluid shader — fixed behind all UI at z-index: -2 */}
+      <FluidShaderBackground />
+
+      {/* Subtle grid overlay — sits above shader, below content */}
+      <div className="fixed inset-0 pointer-events-none" aria-hidden="true"
         style={{
-          zIndex: 0,
+          zIndex: -1,
           backgroundSize: '100px 100px',
           backgroundImage: `
-            linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px)
+            linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)
           `
-        }}>
-        <div className="absolute pointer-events-none rounded-full"
-          style={{
-            width: 1200, height: 1200,
-            background: 'radial-gradient(circle, rgba(232,112,56,0.30) 0%, rgba(232,112,56,0.12) 40%, rgba(232,112,56,0.03) 65%, transparent 80%)'
-          }}
-        />
-      </div>
+        }}
+      />
 
       <Header screen={screen} onInfo={() => setShowTeam(true)} onBack={handleBack} mode={mode} setMode={setMode} />
 
