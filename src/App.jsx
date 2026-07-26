@@ -4,7 +4,8 @@ import {
   StopCircle, Info, AlertCircle, X, ChevronRight, ArrowLeft,
   BarChart2, Zap, Target, TrendingUp, CheckCircle, Clock, Award,
   RefreshCw, Rotate3D, Activity, Brain, ChevronDown, Wifi, Layers,
-  Camera, Upload, Plus, Trash2, Apple, Cpu, Dna, Shield
+  Camera, Upload, Plus, Trash2, Apple, Cpu, Dna, Shield,
+  Flame, Timer, Gauge, Scale, Waves, TrendingDown, Sparkles
 } from 'lucide-react';
 
 import SplashCursor from './SplashCursor';
@@ -397,11 +398,11 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
   const steps = [SCREENS.LANDING, SCREENS.SELECT, SCREENS.TRACKING, SCREENS.ANALYSIS];
   return (
     <header
-      className="flex items-center justify-between px-5 md:px-8 py-3 md:py-4 shrink-0 absolute top-0 left-0 right-0 z-40"
+      className="flex items-center justify-between px-3 sm:px-8 py-2.5 sm:py-4 shrink-0 absolute top-0 left-0 right-0 z-40 gap-2 bg-gradient-to-b from-[#0a0604]/90 via-[#0a0604]/50 to-transparent backdrop-blur-[2px]"
       role="banner"
     >
       {/* Left: back + logo */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {screen !== SCREENS.LANDING && screen !== SCREENS.SELECT && (
           <button
             onClick={onBack}
@@ -414,9 +415,9 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
         <Logo size="sm" />
       </div>
 
-      {/* Centre: floating glassmorphism mode pill — no background box */}
+      {/* Centre: floating glassmorphism mode pill */}
       <div
-        className="flex rounded-full p-1"
+        className="flex rounded-full p-0.5 sm:p-1"
         style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.08)' }}
         role="tablist"
         aria-label="Application mode"
@@ -425,7 +426,7 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
           role="tab"
           aria-selected={mode === 'mobility'}
           onClick={() => setMode('mobility')}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+          className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 cursor-pointer ${
             mode === 'mobility'
               ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/30'
               : 'text-white/45 hover:text-white/80'
@@ -437,7 +438,7 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
           role="tab"
           aria-selected={mode === 'nutrition'}
           onClick={() => setMode('nutrition')}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+          className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 cursor-pointer ${
             mode === 'nutrition'
               ? 'bg-[#e2723b] text-white shadow-md shadow-[#e2723b]/30'
               : 'text-white/45 hover:text-white/80'
@@ -448,8 +449,8 @@ function Header({ screen, onInfo, onBack, mode, setMode }) {
       </div>
 
       {/* Right: progress dots + info */}
-      <div className="flex items-center gap-4">
-        <div className="flex gap-1.5" role="progressbar" aria-label="Navigation progress" aria-valuenow={Object.values(SCREENS).indexOf(screen) + 1} aria-valuemin={1} aria-valuemax={4}>
+      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+        <div className="hidden md:flex gap-1.5" role="progressbar" aria-label="Navigation progress" aria-valuenow={Object.values(SCREENS).indexOf(screen) + 1} aria-valuemin={1} aria-valuemax={4}>
           {steps.map(s => (
             <div key={s} className={`rounded-full transition-all duration-300 ${
               s === screen ? 'w-5 h-1.5 bg-[#e2723b]' : 'w-1.5 h-1.5 bg-white/12'
@@ -615,7 +616,7 @@ function HowItWorksSlide() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
 
           {/* Wide hero bento card — spans 2 cols on md */}
-          <div className={`md:col-span-2 relative bg-[#111316] border border-white/8 rounded-3xl p-8 overflow-hidden transition-all duration-700 ease-out group hover:border-[#e2723b]/20 hover:bg-[#131619] ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}
+          <div className={`md:col-span-2 relative bg-[#111316] border border-white/8 rounded-3xl p-5 sm:p-8 overflow-hidden transition-all duration-700 ease-out group hover:border-[#e2723b]/20 hover:bg-[#131619] ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}
                style={{ transitionDelay: '100ms' }}>
             {/* Subtle radial glow */}
             <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
@@ -623,24 +624,24 @@ function HowItWorksSlide() {
             {/* Top terracotta accent line */}
             <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-[#e2723b]/40 to-transparent" />
             <div className="relative flex flex-col h-full">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-2xl bg-[#e2723b]/12 border border-[#e2723b]/20 flex items-center justify-center text-[#e2723b]">
-                  <Activity className="w-5 h-5" />
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#e2723b]/12 border border-[#e2723b]/20 flex items-center justify-center text-[#e2723b]">
+                  <Activity className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <div>
                   <p className="text-[#e2723b] text-[10px] font-bold uppercase tracking-widest">Pipeline Overview</p>
-                  <p className="text-white font-bold text-base">Full kinematic inference loop</p>
+                  <p className="text-white font-bold text-sm sm:text-base">Full kinematic inference loop</p>
                 </div>
               </div>
               {/* Step flow visualization */}
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 {['Camera Feed', '→', 'MoveNet', '→', 'Joint Coords', '→', 'Angle Engine', '→', 'AI Feedback'].map((item, i) => (
                   item === '→'
-                    ? <span key={i} className="text-[#e2723b]/40 font-bold text-sm">→</span>
-                    : <span key={i} className="px-3 py-1.5 rounded-lg bg-[#1a1d21] border border-white/8 text-white/70 text-xs font-semibold">{item}</span>
+                    ? <span key={i} className="text-[#e2723b]/40 font-bold text-xs sm:text-sm">→</span>
+                    : <span key={i} className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#1a1d21] border border-white/8 text-white/70 text-[11px] sm:text-xs font-semibold">{item}</span>
                 ))}
               </div>
-              <p className="text-white/40 text-xs mt-5 leading-relaxed">All processing runs in the browser via WebGL-accelerated TensorFlow.js. Zero network round-trips. Your video never leaves your device.</p>
+              <p className="text-white/40 text-xs mt-4 leading-relaxed">All processing runs in the browser via WebGL-accelerated TensorFlow.js. Zero network round-trips. Your video never leaves your device.</p>
             </div>
           </div>
 
@@ -766,11 +767,11 @@ function MetricsSlide() {
             </div>
           </div>
 
-          <div className={`bg-[#111316] border border-white/8 rounded-3xl p-7 transition-all duration-700 ease-out ${inView ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'}`}
+          <div className={`bg-[#111316] border border-white/8 rounded-3xl p-5 sm:p-7 transition-all duration-700 ease-out ${inView ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'}`}
                style={{ transitionDelay: '500ms' }}>
             <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-1">Technical Features</p>
             <p className="text-white font-semibold text-base mb-5">What TrueForm AI measures</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {features.map((f, i) => (
                 <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl bg-[#0d0e10] hover:bg-[#151719] transition-colors">
                   <div className="w-6 h-6 rounded-lg bg-[#e2723b]/10 flex items-center justify-center text-[#e2723b] shrink-0 mt-0.5">
@@ -842,10 +843,10 @@ function LandingScreen({ onStart, mode }) {
   }, []);
   return (
     <div className="relative z-10 flex-1 overflow-y-auto scroll-smooth">
-      <section className="relative flex flex-col items-center justify-center min-h-[88vh] overflow-hidden px-4 sm:px-8">
+      <section className="relative flex flex-col items-center justify-center pt-24 sm:pt-32 pb-12 sm:pb-16 min-h-[85vh] overflow-hidden px-4 sm:px-8">
 
-        <div className="relative z-10 text-center" style={{ mixBlendMode: 'normal', background: 'transparent' }}>
-          <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#e2723b]/45 bg-[#e2723b]/12 mb-7 transition-all duration-1000 ease-out ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <div className="relative z-10 text-center max-w-2xl mx-auto" style={{ mixBlendMode: 'normal', background: 'transparent' }}>
+          <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#e2723b]/45 bg-[#e2723b]/12 mb-4 sm:mb-6 transition-all duration-1000 ease-out ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <div className="w-1.5 h-1.5 rounded-full bg-[#e2723b] animate-pulse" />
             <span className="text-[#e2723b] text-[11px] font-bold tracking-wider uppercase">
               {mode === 'mobility' ? 'TensorFlow.js Powered' : 'Local Computer Vision'}
@@ -895,7 +896,7 @@ function LandingScreen({ onStart, mode }) {
 
                     {/* Popover Card */}
                     <div
-                      className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 z-50
+                      className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-[calc(100vw-32px)] max-w-xs sm:w-72 z-50
                         transition-all duration-200 ease-out origin-bottom pointer-events-none
                         ${ isActive ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-1' }`}
                     >
@@ -958,15 +959,15 @@ function LandingScreen({ onStart, mode }) {
 
           {/* ── Social Proof Stats Bar ── */}
           <div className={`flex items-center justify-center gap-0 mb-8 transition-all duration-1000 ease-out delay-450 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
-            <div className="inline-flex items-center divide-x divide-white/10 bg-white/4 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
+            <div className="inline-flex items-center divide-x divide-white/10 bg-white/4 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm max-w-full">
               {[
                 { val: '97.4%', label: 'Pose Accuracy' },
                 { val: '33', label: 'Joints Tracked' },
                 { val: '< 35ms', label: 'Inference Latency' },
               ].map((s, i) => (
-                <div key={i} className="px-5 py-3 text-center">
-                  <p className="text-[#e2723b] font-mono font-bold text-lg leading-none">{s.val}</p>
-                  <p className="text-white/45 text-[10px] uppercase tracking-wider mt-0.5 font-semibold">{s.label}</p>
+                <div key={i} className="px-3 sm:px-5 py-2.5 sm:py-3 text-center">
+                  <p className="text-[#e2723b] font-mono font-bold text-base sm:text-lg leading-none">{s.val}</p>
+                  <p className="text-white/45 text-[9px] sm:text-[10px] uppercase tracking-wider mt-0.5 font-semibold">{s.label}</p>
                 </div>
               ))}
             </div>
@@ -974,7 +975,7 @@ function LandingScreen({ onStart, mode }) {
 
           <div className={`transition-all duration-1000 ease-out delay-500 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <button onClick={onStart}
-              className="group inline-flex items-center gap-3 px-9 py-4 rounded-2xl font-bold text-base text-white shadow-lg shadow-[#e2723b]/30 transition-all duration-200 cursor-pointer mb-6 hover:scale-[1.03] active:scale-[0.98]"
+              className="group inline-flex items-center gap-3 px-7 sm:px-9 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base text-white shadow-lg shadow-[#e2723b]/30 transition-all duration-200 cursor-pointer mb-4 sm:mb-6 hover:scale-[1.03] active:scale-[0.98]"
               style={{ background: 'linear-gradient(135deg, #e2723b 0%, #c25c30 100%)', boxShadow: '0 0 0 0 rgba(226,114,59,0)' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 0 3px rgba(226,114,59,0.25), 0 8px 30px rgba(226,114,59,0.30)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = '0 8px 30px rgba(226,114,59,0.25)'}>
@@ -994,8 +995,8 @@ function LandingScreen({ onStart, mode }) {
       <MetricsSlide />
 
       {/* Landing Footer */}
-      <footer className="relative z-10 border-t border-white/5 py-8 px-8">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <footer className="relative z-10 border-t border-white/5 py-6 sm:py-8 px-4 sm:px-8">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div className="flex items-center gap-3">
             <Logo size="sm" />
             <div>
@@ -1003,7 +1004,7 @@ function LandingScreen({ onStart, mode }) {
               <p className="text-white/30 text-[10px]">Real-time kinematic analysis · {new Date().getFullYear()}</p>
             </div>
           </div>
-          <div className="flex items-center gap-6 text-white/30 text-[10px] font-semibold tracking-wider">
+          <div className="flex flex-wrap justify-center items-center gap-3 sm:gap-6 text-white/30 text-[10px] font-semibold tracking-wider">
             <span>100% On-Device</span>
             <span className="w-1 h-1 rounded-full bg-white/20" />
             <span>Zero Network Overhead</span>
@@ -1023,30 +1024,30 @@ function LandingScreen({ onStart, mode }) {
 function ExerciseSelectScreen({ onSelect }) {
   const [hovered, setHovered] = useState(null);
   return (
-    <div className="relative z-10 flex-1 flex flex-col px-8 pt-20 pb-10 max-w-4xl mx-auto w-full" role="main">
-      <div className="mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#e2723b]/25 bg-[#e2723b]/8 mb-4">
+    <div className="relative z-10 flex-1 flex flex-col px-4 sm:px-8 pt-16 sm:pt-20 pb-8 sm:pb-10 max-w-4xl mx-auto w-full overflow-y-auto" role="main">
+      <div className="mb-6 sm:mb-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#e2723b]/25 bg-[#e2723b]/8 mb-3 sm:mb-4">
           <span className="text-[#e2723b] text-[10px] uppercase tracking-widest font-bold">Step 1 of 2</span>
         </div>
-        <h2 className="text-white text-3xl font-bold mb-2">Choose Your Exercise</h2>
-        <p className="text-white/50 text-sm">Select the movement you want to track and analyse in this session.</p>
+        <h2 className="text-white text-2xl sm:text-3xl font-bold mb-2">Choose Your Exercise</h2>
+        <p className="text-white/50 text-xs sm:text-sm">Select the movement you want to track and analyse in this session.</p>
       </div>
-      <div className="grid grid-cols-2 gap-5 flex-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 flex-1">
         {EXERCISES.map((ex, exIdx) => (
           <button key={ex.id} onClick={() => onSelect(ex)}
             onMouseEnter={() => setHovered(ex.id)} onMouseLeave={() => setHovered(null)}
             style={{ animationDelay: `${exIdx * 90}ms`, animationFillMode: 'both' }}
-            className={`stagger-card relative rounded-3xl p-7 text-left border transition-all duration-300 cursor-pointer overflow-hidden ${
+            className={`stagger-card relative rounded-3xl p-5 sm:p-7 text-left border transition-all duration-300 cursor-pointer overflow-hidden ${
               hovered === ex.id ? 'bg-[#141619] border-[#e2723b]/50 shadow-xl shadow-[#e2723b]/8' : 'bg-[#111316] border-white/8'
             }`}>
             <div className={`absolute inset-0 rounded-3xl pointer-events-none transition-opacity duration-300 ${hovered === ex.id ? 'opacity-100' : 'opacity-0'}`}
               style={{ background: 'radial-gradient(circle at 30% 30%, rgba(226,114,59,0.07) 0%, transparent 70%)' }} />
-            <div className="w-12 h-12 rounded-2xl bg-[#e2723b]/10 border border-[#e2723b]/20 flex items-center justify-center mb-5">
-              {ex.icon === 'rotate' ? <Rotate3D className="w-6 h-6 text-[#e2723b]" /> : <Activity className="w-6 h-6 text-[#e2723b]" />}
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#e2723b]/10 border border-[#e2723b]/20 flex items-center justify-center mb-4 sm:mb-5">
+              {ex.icon === 'rotate' ? <Rotate3D className="w-5 h-5 sm:w-6 sm:h-6 text-[#e2723b]" /> : <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-[#e2723b]" />}
             </div>
-            <h3 className="text-white font-bold text-xl mb-2">{ex.name}</h3>
-            <p className="text-white/65 text-sm leading-relaxed mb-5">{ex.description}</p>
-            <div className="flex flex-wrap gap-2 mb-5">
+            <h3 className="text-white font-bold text-lg sm:text-xl mb-2">{ex.name}</h3>
+            <p className="text-white/65 text-xs sm:text-sm leading-relaxed mb-4 sm:mb-5">{ex.description}</p>
+            <div className="flex flex-wrap gap-2 mb-4 sm:mb-5">
               {ex.tags.map(t => (
                 <span key={t} className="px-2.5 py-1 rounded-full bg-[#1d1f23] border border-white/12 text-white/65 text-[10px] font-semibold uppercase tracking-wide">{t}</span>
               ))}
@@ -1054,9 +1055,9 @@ function ExerciseSelectScreen({ onSelect }) {
             <div className="flex items-center justify-between pt-4 border-t border-white/5">
               <div>
                 <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">Target ROM</p>
-                <p className="text-white/70 text-sm font-mono font-semibold">{ex.targetRange.min}° — {ex.targetRange.max}°</p>
+                <p className="text-white/70 text-xs sm:text-sm font-mono font-semibold">{ex.targetRange.min}° — {ex.targetRange.max}°</p>
               </div>
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${hovered === ex.id ? 'bg-[#e2723b] text-white' : 'bg-white/5 text-white/25'}`}>
+              <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${hovered === ex.id ? 'bg-[#e2723b] text-white' : 'bg-white/5 text-white/25'}`}>
                 <ChevronRight className="w-4 h-4" />
               </div>
             </div>
@@ -1091,13 +1092,15 @@ function SemicircleGauge({ angle, tMin, tMax }) {
 }
 
 /* ─── AI Coach Panel ────────────────────────────────────────── */
-function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCount, peakAngle, exercise }) {
+function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCount, peakAngle, exercise,
+  accel = 0, symmetry = 100, romUtil = 0, fatigue = 0, smoothness = 100, calories = 0 }) {
   const targetAngle = exercise?.targetRange?.max || 90;
   const phase = isFlexing ? 'extension' : 'return';
   const liveFeedback = isMoving
     ? evaluateForm(angle, targetAngle, velocity, phase)
     : "Neutral position. Begin your movement.";
   const feedbackColor = getFeedbackColor(liveFeedback);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
   const coach = getCoachMsg(angle, velocity, isFlexing, formScore, isMoving);
   const st = {
@@ -1107,8 +1110,15 @@ function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCoun
     idle: { bg: 'bg-white/5 border-white/10', text: 'text-white/40', dot: 'bg-white/30' },
   }[coach.type];
 
+  const MicroBar = ({ value, max = 100, color }) => (
+    <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden mt-1">
+      <div className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ${color}`}
+        style={{ width: `${Math.min(100, Math.max(0, (value / max) * 100))}%` }} />
+    </div>
+  );
+
   return (
-    <div className="flex-1 bg-[#111316] border border-white/8 rounded-[1.8rem] p-5 flex flex-col gap-4 overflow-hidden select-none">
+    <div className="flex-1 bg-[#111316] border border-white/8 rounded-[1.8rem] p-5 flex flex-col gap-3 overflow-y-auto select-none">
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-xl bg-[#e2723b]/10 border border-[#e2723b]/20 flex items-center justify-center text-[#e2723b]"><Brain className="w-4.5 h-4.5" /></div>
         <div>
@@ -1157,6 +1167,51 @@ function AICoachPanel({ angle, velocity, isFlexing, formScore, isMoving, repCoun
         </div>
       </div>
 
+      {/* ── Advanced Metrics Section ── */}
+      <button onClick={() => setShowAdvanced(!showAdvanced)}
+        className="flex items-center gap-1.5 text-white/35 hover:text-white/55 text-[10px] uppercase tracking-widest font-bold transition-colors cursor-pointer bg-transparent border-0 p-0">
+        <Sparkles className="w-3 h-3" />
+        Advanced Metrics
+        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
+      </button>
+
+      {showAdvanced && (
+        <div className="grid grid-cols-2 gap-2.5 animate-in">
+          <div className="bg-[#0d0e10] rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Scale className="w-3 h-3 text-cyan-400 opacity-50" />
+              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">Symmetry</p>
+            </div>
+            <p className={`font-mono font-bold text-lg leading-none ${symmetry > 80 ? 'text-emerald-400' : symmetry > 50 ? 'text-amber-400' : 'text-[#e2723b]'}`}>{symmetry}%</p>
+            <MicroBar value={symmetry} color={symmetry > 80 ? 'bg-emerald-400' : symmetry > 50 ? 'bg-amber-400' : 'bg-[#e2723b]'} />
+          </div>
+          <div className="bg-[#0d0e10] rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Target className="w-3 h-3 text-blue-400 opacity-50" />
+              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">ROM Util</p>
+            </div>
+            <p className={`font-mono font-bold text-lg leading-none ${romUtil > 80 ? 'text-emerald-400' : 'text-blue-400'}`}>{romUtil}%</p>
+            <MicroBar value={romUtil} color={romUtil > 80 ? 'bg-emerald-400' : 'bg-blue-400'} />
+          </div>
+          <div className="bg-[#0d0e10] rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingDown className="w-3 h-3 text-rose-400 opacity-50" />
+              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">Fatigue</p>
+            </div>
+            <p className={`font-mono font-bold text-lg leading-none ${fatigue < 15 ? 'text-emerald-400' : fatigue < 30 ? 'text-amber-400' : 'text-rose-400'}`}>{fatigue}%</p>
+            <MicroBar value={fatigue} color={fatigue < 15 ? 'bg-emerald-400' : fatigue < 30 ? 'bg-amber-400' : 'bg-rose-400'} />
+          </div>
+          <div className="bg-[#0d0e10] rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Waves className="w-3 h-3 text-purple-400 opacity-50" />
+              <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">Smooth</p>
+            </div>
+            <p className={`font-mono font-bold text-lg leading-none ${smoothness > 60 ? 'text-emerald-400' : 'text-[#e2723b]'}`}>{smoothness}%</p>
+            <MicroBar value={smoothness} color={smoothness > 60 ? 'bg-emerald-400' : 'bg-[#e2723b]'} />
+          </div>
+        </div>
+      )}
+
       <div className="mt-auto">
         <p className="text-white/30 text-[9px] text-center font-semibold">TF.js MoveNet Engine Active</p>
       </div>
@@ -1186,6 +1241,23 @@ function TrackingScreen({ exercise, onFinish }) {
   // Smoothing filter
   const smoothedAngleRef = useRef(0);
 
+  // ── Advanced Biomechanical Refs ──
+  const prevVelRef = useRef(0);           // for angular acceleration
+  const tutRef = useRef(0);               // cumulative time under tension (seconds)
+  const repStartTimeRef = useRef(null);   // start of current rep phase
+  const concentricTimeRef = useRef(0);    // current rep concentric (extension) duration
+  const eccentricTimeRef = useRef(0);     // current rep eccentric (return) duration
+  const repPeaksRef = useRef([]);         // peak angles per rep for symmetry calc
+  const currentRepPeakRef = useRef(0);    // track peak within current rep
+  const romUtilRef = useRef(0);
+  const minAngleRef = useRef(180);        // track minimum angle for ROM util
+
+  // ── Session Intelligence Refs ──
+  const accelHistRef = useRef([]);        // recent acceleration samples for jerk
+  const caloriesRef = useRef(0);          // cumulative calorie estimate
+  const prevAccelRef = useRef(0);         // for jerk (d(accel)/dt)
+  const jerkAccumRef = useRef([]);        // sliding window jerk samples
+
   const [camActive, setCamActive] = useState(false);
   const [camError, setCamError] = useState('');
   const [modelStatus, setModelStatus] = useState('Loading ML Model...');
@@ -1198,7 +1270,17 @@ function TrackingScreen({ exercise, onFinish }) {
   const [uiForm, setUiForm] = useState(100);
   const [uiMoving, setUiMoving] = useState(false);
   const [uiFlexing, setUiFlexing] = useState(false);
-  
+
+  // ── Advanced UI State ──
+  const [uiAccel, setUiAccel] = useState(0);
+  const [uiTUT, setUiTUT] = useState(0);
+  const [uiTempo, setUiTempo] = useState({ con: 0, ecc: 0 });
+  const [uiSymmetry, setUiSymmetry] = useState(100);
+  const [uiRomUtil, setUiRomUtil] = useState(0);
+  const [uiFatigue, setUiFatigue] = useState(0);
+  const [uiJerk, setUiJerk] = useState(0);
+  const [uiCalories, setUiCalories] = useState(0);
+
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef(Date.now());
   const frameSkipRef = useRef(0);
@@ -1352,11 +1434,25 @@ function TrackingScreen({ exercise, onFinish }) {
           const peakLimit = exercise.targetRange.min;
           const restLimit = 25;
 
+          // Track current rep peak
+          if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
+          if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
+
+          // Phase transitions with tempo tracking
           if (activeAngle > peakLimit && !isFlexingRef.current) {
             isFlexingRef.current = true;
+            // Eccentric phase just ended, concentric starting
+            if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+            repStartTimeRef.current = now;
           } else if (activeAngle < restLimit && isFlexingRef.current) {
             isFlexingRef.current = false;
+            // Concentric phase just ended
+            if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+            repStartTimeRef.current = now;
             repCountRef.current += 1;
+            // Store this rep's peak for symmetry
+            if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
+            currentRepPeakRef.current = 0;
             playChime();
           }
 
@@ -1364,12 +1460,64 @@ function TrackingScreen({ exercise, onFinish }) {
           const vel = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
           prevAngleRef.current = activeAngle;
 
+          // ── Advanced Metrics Computation ──
+          // Angular acceleration (°/s²)
+          const accel = dt > 0.01 ? (vel - prevVelRef.current) / dt : 0;
+          prevVelRef.current = vel;
+
+          // Time under tension — increment when actively moving
+          if (activeAngle > restLimit + 5) tutRef.current += dt;
+
+          // Jerk (rate of acceleration change — smoothness metric)
+          const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
+          prevAccelRef.current = accel;
+          jerkAccumRef.current.push(jerkSample);
+          if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
+          const avgJerk = jerkAccumRef.current.length > 0
+            ? jerkAccumRef.current.reduce((a, b) => a + b, 0) / jerkAccumRef.current.length : 0;
+          // Smoothness: invert jerk to 0-100 scale (lower jerk = higher smoothness)
+          const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
+
+          // Symmetry score — std deviation of rep peaks
+          let symmetry = 100;
+          if (repPeaksRef.current.length >= 2) {
+            const peaks = repPeaksRef.current;
+            const mean = peaks.reduce((a, b) => a + b, 0) / peaks.length;
+            const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
+            const stdDev = Math.sqrt(variance);
+            symmetry = mean > 0 ? Math.max(0, Math.round(100 - (stdDev / mean) * 100)) : 100;
+          }
+
+          // ROM Utilization — % of target range actually used
+          const tMin = exercise.targetRange.min;
+          const tMax = exercise.targetRange.max;
+          const usedRange = peakAngleRef.current - minAngleRef.current;
+          const targetRange = tMax - tMin;
+          romUtilRef.current = targetRange > 0 ? Math.min(100, Math.round((usedRange / targetRange) * 100)) : 0;
+
+          // Fatigue index — compare recent rep peaks to early ones
+          let fatigue = 0;
+          if (repPeaksRef.current.length >= 4) {
+            const rp = repPeaksRef.current;
+            const firstHalf = rp.slice(0, Math.floor(rp.length / 2));
+            const secondHalf = rp.slice(Math.floor(rp.length / 2));
+            const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+            const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+            fatigue = avgFirst > 0 ? Math.max(0, Math.round(((avgFirst - avgSecond) / avgFirst) * 100)) : 0;
+          }
+
+          // Calorie estimation — MET-based (light ROM exercise ~3.5 MET, 70kg default)
+          const metValue = 3.5;
+          const weightKg = 70;
+          const elapsedHrs = tutRef.current / 3600;
+          caloriesRef.current = Math.round(metValue * weightKg * elapsedHrs);
+
+          // Form score
+          const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
+
           historyRef.current.push(activeAngle);
           if (historyRef.current.length > 600) historyRef.current.shift();
 
-          const tMin = exercise.targetRange.min;
-          const tMax = exercise.targetRange.max;
-          const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
           formScoreRef.current = historyRef.current.length > 0 ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
 
           frameSkipRef.current++;
@@ -1381,6 +1529,15 @@ function TrackingScreen({ exercise, onFinish }) {
             setUiForm(formScoreRef.current);
             setUiMoving(true);
             setUiFlexing(isFlexingRef.current);
+            // Advanced metrics
+            setUiAccel(accel);
+            setUiTUT(tutRef.current);
+            setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
+            setUiSymmetry(symmetry);
+            setUiRomUtil(romUtilRef.current);
+            setUiFatigue(fatigue);
+            setUiJerk(smoothness);
+            setUiCalories(caloriesRef.current);
           }
         }
       }
@@ -1473,11 +1630,22 @@ function TrackingScreen({ exercise, onFinish }) {
         const peakLimit = exercise.targetRange.min;
         const restLimit = exercise.id === 'head_rotation' ? 20 : 35;
 
+        // Track current rep peak
+        if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
+        if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
+
+        // Phase transitions with tempo tracking
         if (activeAngle > peakLimit && !isFlexingRef.current) {
           isFlexingRef.current = true;
+          if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+          repStartTimeRef.current = now;
         } else if (activeAngle < restLimit && isFlexingRef.current) {
           isFlexingRef.current = false;
+          if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+          repStartTimeRef.current = now;
           repCountRef.current += 1;
+          if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
+          currentRepPeakRef.current = 0;
           playChime();
         }
 
@@ -1489,13 +1657,56 @@ function TrackingScreen({ exercise, onFinish }) {
         }
         prevAngleRef.current = activeAngle;
 
+        // ── Advanced Metrics Computation ──
+        const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
+        prevVelRef.current = velocity;
+
+        if (activeAngle > restLimit + 5) tutRef.current += dt;
+
+        const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
+        prevAccelRef.current = accel;
+        jerkAccumRef.current.push(jerkSample);
+        if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
+        const avgJerk = jerkAccumRef.current.length > 0
+          ? jerkAccumRef.current.reduce((a, b) => a + b, 0) / jerkAccumRef.current.length : 0;
+        const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
+
+        let symmetry = 100;
+        if (repPeaksRef.current.length >= 2) {
+          const peaks = repPeaksRef.current;
+          const mean = peaks.reduce((a, b) => a + b, 0) / peaks.length;
+          const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
+          const stdDev = Math.sqrt(variance);
+          symmetry = mean > 0 ? Math.max(0, Math.round(100 - (stdDev / mean) * 100)) : 100;
+        }
+
+        const tMin = exercise.targetRange.min;
+        const tMax = exercise.targetRange.max;
+        const usedRange = peakAngleRef.current - minAngleRef.current;
+        const targetRange = tMax - tMin;
+        romUtilRef.current = targetRange > 0 ? Math.min(100, Math.round((usedRange / targetRange) * 100)) : 0;
+
+        let fatigue = 0;
+        if (repPeaksRef.current.length >= 4) {
+          const rp = repPeaksRef.current;
+          const firstHalf = rp.slice(0, Math.floor(rp.length / 2));
+          const secondHalf = rp.slice(Math.floor(rp.length / 2));
+          const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+          const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+          fatigue = avgFirst > 0 ? Math.max(0, Math.round(((avgFirst - avgSecond) / avgFirst) * 100)) : 0;
+        }
+
+        const metValue = 3.5;
+        const weightKg = 70;
+        const elapsedHrs = tutRef.current / 3600;
+        caloriesRef.current = Math.round(metValue * weightKg * elapsedHrs);
+
+        const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
+
         // Store for analysis
         historyRef.current.push(activeAngle);
         if (historyRef.current.length > 600) historyRef.current.shift();
 
-        const tMin = exercise.targetRange.min;
-        const tMax = exercise.targetRange.max;
-        const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
         formScoreRef.current = historyRef.current.length > 0 ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
 
         // UI Throttle Update
@@ -1508,6 +1719,15 @@ function TrackingScreen({ exercise, onFinish }) {
           setUiForm(formScoreRef.current);
           setUiMoving(isUserMoving);
           setUiFlexing(isFlexingRef.current);
+          // Advanced metrics
+          setUiAccel(accel);
+          setUiTUT(tutRef.current);
+          setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
+          setUiSymmetry(symmetry);
+          setUiRomUtil(romUtilRef.current);
+          setUiFatigue(fatigue);
+          setUiJerk(smoothness);
+          setUiCalories(caloriesRef.current);
         }
       }
     } catch (e) {
@@ -1539,6 +1759,14 @@ function TrackingScreen({ exercise, onFinish }) {
       elapsed,
       history: hist,
       avgAngle: hist.length > 0 ? Math.round(hist.reduce((a, b) => a + b, 0) / hist.length) : 0,
+      // Advanced metrics
+      symmetry: uiSymmetry,
+      romUtil: uiRomUtil,
+      fatigue: uiFatigue,
+      smoothness: uiJerk,
+      calories: uiCalories,
+      tut: uiTUT,
+      tempo: uiTempo,
     });
   };
 
@@ -1592,39 +1820,71 @@ function TrackingScreen({ exercise, onFinish }) {
           angle={uiAngle} velocity={uiVel} isFlexing={uiFlexing}
           formScore={uiForm} isMoving={uiMoving}
           repCount={uiReps} peakAngle={uiPeak} exercise={exercise}
+          accel={uiAccel} symmetry={uiSymmetry} romUtil={uiRomUtil}
+          fatigue={uiFatigue} smoothness={uiJerk} calories={uiCalories}
         />
       </div>
 
-      {/* Stats pills */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+      {/* Stats pills — Row 1: Primary Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 shrink-0">
         {[
-          { label: 'Calculated Angle', val: `${uiAngle.toFixed(1)}°` },
-          { label: 'Movement Speed', val: `${uiVel.toFixed(1)}°/s` },
-          { label: 'Peak Angle', val: `${uiPeak.toFixed(0)}°` },
-          { label: 'Tracking Score', val: `${uiForm}%` },
+          { label: 'Calculated Angle', val: `${uiAngle.toFixed(1)}°`, color: 'text-[#e2723b]' },
+          { label: 'Movement Speed', val: `${uiVel.toFixed(1)}°/s`, color: 'text-blue-400' },
+          { label: 'Peak Angle', val: `${uiPeak.toFixed(0)}°`, color: 'text-[#e2723b]' },
+          { label: 'Tracking Score', val: `${uiForm}%`, color: uiForm > 70 ? 'text-emerald-400' : 'text-[#e2723b]' },
         ].map(p => (
-          <div key={p.label} className="bg-[#111316] border border-white/8 rounded-2xl px-4 py-3.5">
-            <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold mb-1.5">{p.label}</p>
-            <p className="text-[#e2723b] font-mono text-2xl font-bold leading-none">{p.val}</p>
+          <div key={p.label} className="bg-[#111316] border border-white/8 rounded-2xl p-3 sm:px-4 sm:py-3.5">
+            <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold mb-1 sm:mb-1.5">{p.label}</p>
+            <p className={`font-mono text-xl sm:text-2xl font-bold leading-none ${p.color}`}>{p.val}</p>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shrink-0">
-        <div className="flex flex-wrap items-center gap-4 sm:gap-5 bg-[#111316] border border-white/8 rounded-2xl px-5 py-3">
+      {/* Stats pills — Row 2: Advanced Biomechanical Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 shrink-0">
+        {[
+          { label: 'Acceleration', val: `${Math.abs(uiAccel).toFixed(0)}`, unit: '°/s²', color: 'text-purple-400', icon: <Gauge className="w-3 h-3" /> },
+          { label: 'Time Under Tension', val: `${uiTUT.toFixed(1)}`, unit: 's', color: 'text-amber-400', icon: <Timer className="w-3 h-3" /> },
+          { label: 'Smoothness', val: `${uiJerk}`, unit: '%', color: uiJerk > 60 ? 'text-emerald-400' : 'text-[#e2723b]', icon: <Waves className="w-3 h-3" /> },
+          { label: 'Est. Calories', val: `${uiCalories}`, unit: 'kcal', color: 'text-rose-400', icon: <Flame className="w-3 h-3" /> },
+        ].map(p => (
+          <div key={p.label} className="bg-[#111316] border border-white/8 rounded-2xl p-3 sm:px-4 sm:py-3">
+            <div className="flex items-center gap-1.5 mb-1 sm:mb-1.5">
+              <span className={`opacity-50 ${p.color}`}>{p.icon}</span>
+              <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold truncate">{p.label}</p>
+            </div>
+            <p className={`font-mono text-lg sm:text-xl font-bold leading-none ${p.color}`}>{p.val}<span className="text-[10px] opacity-50 ml-1">{p.unit}</span></p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 shrink-0">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-3 sm:gap-5 bg-[#111316] border border-white/8 rounded-2xl p-3 sm:px-5 sm:py-3">
           <div className="flex items-center gap-2">
             <span className="text-white/45 text-xs">Repetitions</span>
-            <span className="text-emerald-400 font-mono font-bold text-xl leading-none">{uiReps}</span>
+            <span className="text-emerald-400 font-mono font-bold text-lg sm:text-xl leading-none">{uiReps}</span>
           </div>
-          <div className="w-px h-5 bg-white/8" />
+          <div className="hidden sm:block w-px h-5 bg-white/8" />
           <div className="flex items-center gap-2">
             <span className="text-white/45 text-xs">Best ROM</span>
-            <span className="text-[#e2723b] font-mono font-bold text-sm">{uiPeak.toFixed(0)}°</span>
+            <span className="text-[#e2723b] font-mono font-bold text-xs sm:text-sm">{uiPeak.toFixed(0)}°</span>
           </div>
-          <div className="w-px h-5 bg-white/8" />
+          <div className="hidden sm:block w-px h-5 bg-white/8" />
           <div className="flex items-center gap-2">
             <span className="text-white/45 text-xs">Consistency</span>
-            <span className={`font-mono font-bold text-sm ${uiForm > 70 ? 'text-emerald-400' : 'text-[#e2723b]'}`}>{uiForm}%</span>
+            <span className={`font-mono font-bold text-xs sm:text-sm ${uiForm > 70 ? 'text-emerald-400' : 'text-[#e2723b]'}`}>{uiForm}%</span>
+          </div>
+          <div className="hidden sm:block w-px h-5 bg-white/8" />
+          <div className="flex items-center gap-2">
+            <Timer className="w-3 h-3 text-white/30" />
+            <span className="text-white/45 text-xs">TUT</span>
+            <span className="text-amber-400 font-mono font-bold text-xs sm:text-sm">{uiTUT.toFixed(1)}s</span>
+          </div>
+          <div className="hidden sm:block w-px h-5 bg-white/8" />
+          <div className="flex items-center gap-2 col-span-2 sm:col-span-1">
+            <Flame className="w-3 h-3 text-white/30" />
+            <span className="text-white/45 text-xs">Cal</span>
+            <span className="text-rose-400 font-mono font-bold text-xs sm:text-sm">{uiCalories}</span>
           </div>
         </div>
         <button onClick={handleFinish}
@@ -1656,37 +1916,37 @@ function AnalysisScreen({ data, onRetry, onHome }) {
   }).join(' ');
 
   return (
-    <div className="relative z-10 flex-1 flex flex-col px-8 pt-20 pb-8 overflow-y-auto max-w-5xl mx-auto w-full select-none">
-      <div className="flex items-start justify-between mb-8">
+    <div className="relative z-10 flex-1 flex flex-col px-4 sm:px-8 pt-16 sm:pt-20 pb-8 overflow-y-auto max-w-5xl mx-auto w-full select-none">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <p className="text-[#e2723b] text-xs uppercase tracking-widest font-semibold mb-1">Session Complete</p>
-          <h2 className="text-white text-3xl font-bold">Analysis Report</h2>
-          <p className="text-white/50 text-sm mt-1">{exercise.name} · {fmtTime(elapsed)} session</p>
+          <h2 className="text-white text-2xl sm:text-3xl font-bold">Analysis Report</h2>
+          <p className="text-white/50 text-xs sm:text-sm mt-1">{exercise.name} · {fmtTime(elapsed)} session</p>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-white/40 text-xs mb-1 uppercase tracking-wider font-semibold">Form Grade</p>
-          <p className={`text-3xl font-bold ${gradeColor}`}>{grade}</p>
-          <p className={`text-sm opacity-70 ${gradeColor}`}>{formScore}% in target zone</p>
+          <p className={`text-2xl sm:text-3xl font-bold ${gradeColor}`}>{grade}</p>
+          <p className={`text-xs sm:text-sm opacity-70 ${gradeColor}`}>{formScore}% in target zone</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5">
         {[
           { icon: <RefreshCw className="w-4 h-4" />, label: 'Total Reps', val: repCount, unit: '', color: 'text-emerald-400' },
           { icon: <Target className="w-4 h-4" />, label: 'Peak ROM', val: peakAngle.toFixed(0), unit: '°', color: 'text-[#e2723b]' },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Avg Angle', val: avgAngle, unit: '°', color: 'text-blue-400' },
           { icon: <Clock className="w-4 h-4" />, label: 'Duration', val: fmtTime(elapsed), unit: '', color: 'text-purple-400' },
         ].map(s => (
-          <div key={s.label} className="bg-[#111316] border border-white/8 rounded-2xl p-5">
-            <div className={`mb-3 opacity-60 ${s.color}`}>{s.icon}</div>
-            <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold mb-1.5">{s.label}</p>
-            <p className={`font-mono text-2xl font-bold ${s.color}`}>{s.val}<span className="text-sm opacity-50 ml-0.5">{s.unit}</span></p>
+          <div key={s.label} className="bg-[#111316] border border-white/8 rounded-2xl p-4 sm:p-5">
+            <div className={`mb-2.5 opacity-60 ${s.color}`}>{s.icon}</div>
+            <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold mb-1">{s.label}</p>
+            <p className={`font-mono text-xl sm:text-2xl font-bold ${s.color}`}>{s.val}<span className="text-xs opacity-50 ml-0.5">{s.unit}</span></p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-5">
-        <div className="bg-[#111316] border border-white/8 rounded-2xl p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-5">
+        <div className="bg-[#111316] border border-white/8 rounded-2xl p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">Range of Motion</p>
             {targetMet
@@ -1703,12 +1963,12 @@ function AnalysisScreen({ data, onRetry, onHome }) {
             <span className="text-emerald-400/80">Target: {exercise.targetRange.min}°–{exercise.targetRange.max}°</span>
             <span>{exercise.targetRange.max}°</span>
           </div>
-          <p className={`text-2xl font-bold font-mono mt-3 ${targetMet ? 'text-emerald-400' : 'text-[#e2723b]'}`}>
-            {peakAngle.toFixed(0)}<span className="text-sm opacity-50">°</span>
+          <p className={`text-xl sm:text-2xl font-bold font-mono mt-3 ${targetMet ? 'text-emerald-400' : 'text-[#e2723b]'}`}>
+            {peakAngle.toFixed(0)}<span className="text-xs opacity-50">°</span>
           </p>
         </div>
 
-        <div className="bg-[#111316] border border-white/8 rounded-2xl p-5">
+        <div className="bg-[#111316] border border-white/8 rounded-2xl p-4 sm:p-5">
           <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-4">Angle Over Session</p>
           {spark.length > 3 ? (
             <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="none" className="overflow-visible">
@@ -1728,12 +1988,12 @@ function AnalysisScreen({ data, onRetry, onHome }) {
         </div>
       </div>
 
-      <div className="bg-[#111316] border border-white/8 rounded-2xl p-5 mb-6">
+      <div className="bg-[#111316] border border-white/8 rounded-2xl p-4 sm:p-5 mb-5 sm:mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Award className="w-4 h-4 text-[#e2723b]" />
           <p className="text-white/50 text-xs uppercase tracking-wider font-semibold">AI Feedback</p>
         </div>
-        <ul className="space-y-2 text-white/60 text-sm leading-relaxed">
+        <ul className="space-y-2 text-white/60 text-xs sm:text-sm leading-relaxed">
           {repCount === 0 && <li>• No complete repetitions detected. Ensure you perform a full range of motion, reaching the peak before returning to start.</li>}
           {repCount > 0 && repCount < 5 && <li>• {repCount} rep{repCount > 1 ? 's' : ''} recorded. Extend your session for a more comprehensive assessment.</li>}
           {repCount >= 5 && <li>• Great effort — {repCount} reps logged with consistent movement patterns.</li>}
@@ -1744,13 +2004,13 @@ function AnalysisScreen({ data, onRetry, onHome }) {
         </ul>
       </div>
 
-      <div className="flex items-center gap-3 pb-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pb-2">
         <button onClick={onRetry}
-          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#e2723b] hover:bg-[#d15f2a] text-white font-semibold text-sm transition-all shadow-lg shadow-[#e2723b]/20 cursor-pointer">
+          className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-[#e2723b] hover:bg-[#d15f2a] text-white font-semibold text-sm transition-all shadow-lg shadow-[#e2723b]/20 cursor-pointer w-full sm:w-auto">
           <RefreshCw className="w-4 h-4" /> New Session
         </button>
         <button onClick={onHome}
-          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/8 border border-white/10 text-white/70 hover:text-white font-semibold text-sm transition-all cursor-pointer">
+          className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/8 border border-white/10 text-white/70 hover:text-white font-semibold text-sm transition-all cursor-pointer w-full sm:w-auto">
           <ArrowLeft className="w-4 h-4" /> Home
         </button>
       </div>
@@ -2220,30 +2480,30 @@ function PredictiveNutritionHub() {
               </div>
 
               {/* Sub-Metrics Row */}
-              <div className="grid grid-cols-3 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 pt-2">
                 <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
                   <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">HOMA-IR Proxy</p>
-                  <p className="text-white font-mono font-bold text-base">{diagnostics.homaIr.toFixed(2)}</p>
+                  <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.homaIr.toFixed(2)}</p>
                   <span className="text-[9px] text-white/40">{diagnostics.homaIr > 2.5 ? 'Elevated' : 'Optimal'}</span>
                 </div>
 
                 <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
                   <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">TG / HDL Ratio</p>
-                  <p className="text-white font-mono font-bold text-base">{diagnostics.tgHdlRatio.toFixed(2)}</p>
+                  <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.tgHdlRatio.toFixed(2)}</p>
                   <span className="text-[9px] text-white/40">{diagnostics.tgHdlRatio > 3.0 ? 'High' : 'Normal'}</span>
                 </div>
 
                 <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
                   <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">AIP Index</p>
-                  <p className="text-white font-mono font-bold text-base">{diagnostics.aip.toFixed(2)}</p>
+                  <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.aip.toFixed(2)}</p>
                   <span className="text-[9px] text-white/40">{diagnostics.aip > 0.24 ? 'High Risk' : 'Low Risk'}</span>
                 </div>
               </div>
             </div>
 
             {/* Neural Classifier & Ensemble Activation Visualization */}
-            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
-              <div className="flex justify-between items-center border-b border-white/5 pb-3">
+            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-4 sm:p-6 backdrop-blur-xl flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/5 pb-3 gap-2">
                 <h4 className="text-white font-bold text-sm flex items-center gap-2">
                   <Layers className="w-4 h-4 text-[#e2723b]" /> Classifier Layer Activations &amp; Ensemble Decision
                 </h4>
@@ -2300,8 +2560,8 @@ function PredictiveNutritionHub() {
             </div>
 
             {/* AI Precision Dietary Recommendations Protocol */}
-            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
-              <div className="flex justify-between items-center border-b border-white/5 pb-3">
+            <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-4 sm:p-6 backdrop-blur-xl flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/5 pb-3 gap-2">
                 <div>
                   <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">Automated Targeted Interventions</p>
                   <h4 className="text-white font-bold text-base flex items-center gap-2">
@@ -2315,14 +2575,14 @@ function PredictiveNutritionHub() {
                 {diagnostics.recommendations.map((rec, idx) => {
                   const IconComp = rec.icon || CheckCircle;
                   return (
-                    <div key={idx} className="bg-black/40 border border-white/5 hover:border-white/10 rounded-2xl p-4 transition-all flex items-start gap-4">
-                      <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 shrink-0 mt-0.5" style={{ color: rec.color }}>
-                        <IconComp className="w-5 h-5" />
+                    <div key={idx} className="bg-black/40 border border-white/5 hover:border-white/10 rounded-2xl p-3.5 sm:p-4 transition-all flex items-start gap-3 sm:gap-4">
+                      <div className="p-2 sm:p-2.5 rounded-xl bg-white/5 border border-white/10 shrink-0 mt-0.5" style={{ color: rec.color }}>
+                        <IconComp className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <h5 className="text-white font-bold text-sm">{rec.title}</h5>
-                          <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-white/5 text-white/60 border border-white/10">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                          <h5 className="text-white font-bold text-xs sm:text-sm truncate">{rec.title}</h5>
+                          <span className="self-start sm:self-auto px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-white/5 text-white/60 border border-white/10">
                             {rec.category}
                           </span>
                         </div>
@@ -2385,7 +2645,7 @@ export default function App() {
   };
 
   return (
-    <div className="w-full min-h-screen text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#0a0604' }}>
+    <div className="w-full h-full text-white flex flex-col select-none overflow-hidden relative z-0" style={{ background: '#0a0604' }}>
       {/* ── WebGL moody fluid shader — z-index: -2 ── */}
       <FluidShaderBackground />
 
