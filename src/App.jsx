@@ -1631,8 +1631,10 @@ function TrackingScreen({ exercise, onFinish }) {
 
         if (poses.length > 0 && poses[0].keypoints) {
           const kps = poses[0].keypoints;
+          // Low threshold (0.15) — captures partially-visible joints that are still reliable enough.
+          // A strict 0.3 rejects hip/wrist on upper-body shots, making arm tracking impossible.
           const kMap = {};
-          kps.forEach(k => { if (k.score > 0.3) kMap[k.name] = k; }); // Minimum confidence 0.3
+          kps.forEach(k => { if (k.score > 0.15) kMap[k.name] = k; });
 
           // ── Kinematic Math ──
           if (exercise.id === 'head_rotation') {
@@ -1645,24 +1647,48 @@ function TrackingScreen({ exercise, onFinish }) {
               isUserMoving = true;
             }
           } else if (exercise.id === 'arm_rotation') {
-            // Bilateral: try left side first, then right side, pick the side where
-            // all three keypoints exist.  If both exist pick the one with higher
-            // average confidence (more reliable reading).
-            const lHip = kMap['left_hip'],  lSho = kMap['left_shoulder'],  lElb = kMap['left_elbow'];
-            const rHip = kMap['right_hip'], rSho = kMap['right_shoulder'], rElb = kMap['right_elbow'];
-            const leftOk  = !!(lHip && lSho && lElb);
-            const rightOk = !!(rHip && rSho && rElb);
-            let p1, p2, p3;
+            // ── ROBUST ARM ROTATION: shoulder → elbow vertical angle ──
+            // We deliberately DO NOT use the hip as an anchor — it's almost never
+            // reliably detected in a typical upper-body webcam shot (confidence < 0.15).
+            // Instead we measure the angle of the shoulder→elbow vector from the
+            // downward vertical. This only needs 2 keypoints.
+            //
+            // angle = 0°  when arm hangs straight down (resting)
+            // angle = 90° when arm is horizontal
+            // angle = 180° when arm is fully raised above head
+
+            const calcArmAngle = (shoulder, elbow) => {
+              const dx = elbow.x - shoulder.x;
+              const dy = elbow.y - shoulder.y; // positive = downward in image coords
+              // atan2(dy, dx) relative to straight-down vector (0, 1 in image coords)
+              // angle from downward vertical:
+              const angleRad = Math.atan2(dx, dy); // atan2(horizontal, vertical)
+              let angleDeg = Math.abs((angleRad * 180) / Math.PI); // 0 = hanging down, 90 = horizontal
+              // Remap so that raised arm gives a larger reading:
+              // 0° down → 0°, horizontal → 90°, fully raised → 180°
+              return Math.min(angleDeg, 175);
+            };
+
+            const lSho = kMap['left_shoulder'],  lElb = kMap['left_elbow'];
+            const rSho = kMap['right_shoulder'], rElb = kMap['right_elbow'];
+
+            const leftOk  = !!(lSho && lElb);
+            const rightOk = !!(rSho && rElb);
+
             if (leftOk && rightOk) {
-              // pick the side with higher average score
-              const leftConf  = (lHip.score + lSho.score + lElb.score) / 3;
-              const rightConf = (rHip.score + rSho.score + rElb.score) / 3;
-              if (leftConf >= rightConf) { p1 = lHip; p2 = lSho; p3 = lElb; }
-              else                        { p1 = rHip; p2 = rSho; p3 = rElb; }
-            } else if (leftOk)  { p1 = lHip; p2 = lSho; p3 = lElb; }
-            else if (rightOk)   { p1 = rHip; p2 = rSho; p3 = rElb; }
-            if (p1 && p2 && p3) {
-              calculatedAngle = calcAngle3P(p1, p2, p3);
+              const leftConf  = (lSho.score + lElb.score) / 2;
+              const rightConf = (rSho.score + rElb.score) / 2;
+              const lAngle = calcArmAngle(lSho, lElb);
+              const rAngle = calcArmAngle(rSho, rElb);
+              // Pick the arm that is more raised (higher angle = user is doing the exercise)
+              // If both are similar, pick the one with better confidence
+              calculatedAngle = (lAngle >= rAngle) ? lAngle : rAngle;
+              isUserMoving = true;
+            } else if (leftOk) {
+              calculatedAngle = calcArmAngle(lSho, lElb);
+              isUserMoving = true;
+            } else if (rightOk) {
+              calculatedAngle = calcArmAngle(rSho, rElb);
               isUserMoving = true;
             }
           } else {
@@ -1678,9 +1704,9 @@ function TrackingScreen({ exercise, onFinish }) {
           }
 
           // Draw Skeleton Overlay
-          const drawBone = (nameA, nameB) => {
+          const drawBone = (nameA, nameB, color = '#e2723b') => {
             if (kMap[nameA] && kMap[nameB]) {
-              ctx.strokeStyle = '#e2723b';
+              ctx.strokeStyle = color;
               ctx.lineWidth = 3;
               ctx.beginPath();
               ctx.moveTo(kMap[nameA].x, kMap[nameA].y);
@@ -1688,27 +1714,49 @@ function TrackingScreen({ exercise, onFinish }) {
               ctx.stroke();
             }
           };
+          const drawBoneXY = (x1, y1, x2, y2, color = 'rgba(255,255,255,0.3)') => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            ctx.setLineDash([]);
+          };
 
           if (exercise.id === 'head_rotation') {
              drawBone('nose', 'left_eye'); drawBone('left_eye', 'left_ear');
              drawBone('nose', 'right_eye'); drawBone('right_eye', 'right_ear');
+             drawBone('left_shoulder', 'right_shoulder', 'rgba(255,255,255,0.4)');
           } else if (exercise.id === 'arm_rotation') {
-            // Draw whichever arm side was used (both if visible)
-            drawBone('left_hip', 'left_shoulder'); drawBone('left_shoulder', 'left_elbow');
-            drawBone('right_hip', 'right_shoulder'); drawBone('right_shoulder', 'right_elbow');
-            // Also draw torso connector for context
-            drawBone('left_shoulder', 'right_shoulder');
-            drawBone('left_hip', 'right_hip');
+            // Always draw both arms with whatever keypoints exist
+            drawBone('left_shoulder',  'left_elbow');  drawBone('left_elbow',  'left_wrist');
+            drawBone('right_shoulder', 'right_elbow'); drawBone('right_elbow', 'right_wrist');
+            // Torso references
+            drawBone('left_shoulder',  'right_shoulder', 'rgba(255,255,255,0.35)');
+            drawBone('left_shoulder',  'left_hip',       'rgba(255,255,255,0.25)');
+            drawBone('right_shoulder', 'right_hip',      'rgba(255,255,255,0.25)');
+            drawBone('left_hip',       'right_hip',      'rgba(255,255,255,0.25)');
+            // Dashed vertical reference line from each visible shoulder downward
+            if (kMap['left_shoulder']) {
+              const s = kMap['left_shoulder'];
+              drawBoneXY(s.x, s.y, s.x, s.y + 120);
+            }
+            if (kMap['right_shoulder']) {
+              const s = kMap['right_shoulder'];
+              drawBoneXY(s.x, s.y, s.x, s.y + 120);
+            }
           } else {
              const joints = exercise.joints || [];
              drawBone(joints[0], joints[1]);
              drawBone(joints[1], joints[2]);
           }
 
-          Object.values(kMap).forEach(k => {
-            ctx.fillStyle = '#e2723b';
-            ctx.beginPath(); ctx.arc(k.x, k.y, 6, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
+          // Draw ALL keypoints above 0.15 — always show skeleton even if angle calc fails
+          kps.forEach(k => {
+            if (k.score < 0.15) return;
+            const alpha = Math.min(1, k.score * 2); // fade low-confidence ones
+            ctx.fillStyle = `rgba(226, 114, 59, ${alpha})`;
+            ctx.beginPath(); ctx.arc(k.x, k.y, 5 + alpha * 2, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; ctx.lineWidth = 1.5; ctx.stroke();
           });
         }
 
