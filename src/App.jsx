@@ -10,10 +10,13 @@ import {
 
 import SplashCursor from './SplashCursor';
 
-// TensorFlow.js from Global Scope (loaded via CDN in index.html to bypass Vite bundling errors)
-const tf = window.tf;
-const poseDetection = window.poseDetection;
-const mobilenet = window.mobilenet;
+// TensorFlow.js from Global Scope (loaded via CDN in index.html)
+// NOTE: Read dynamically inside functions to avoid race conditions with CDN load timing.
+// Use getTF() / getPoseDetection() everywhere instead of top-level capture.
+const getTF = () => window.tf;
+const getPoseDetection = () => window.poseDetection;
+// mobilenet kept as a lazy accessor too
+const getMobileNet = () => window.mobilenet;
 
 /* ─── FluidShaderBackground ─────────────────────────────────── */
 const VERT_SRC = `
@@ -1305,6 +1308,20 @@ function TrackingScreen({ exercise, onFinish }) {
     isSimulatingRef.current = false;
     setModelStatus('Requesting camera access...');
 
+    // ── 0. Wait for TF.js CDN scripts to fully load (up to 10s) ──
+    const waitForTF = () => new Promise((resolve, reject) => {
+      let attempts = 0;
+      const check = () => {
+        const tfLib = getTF();
+        const pdLib = getPoseDetection();
+        if (tfLib && pdLib && pdLib.movenet) { resolve({ tfLib, pdLib }); return; }
+        attempts++;
+        if (attempts > 100) { reject(new Error('TensorFlow.js CDN scripts failed to load after 10 seconds.')); return; }
+        setTimeout(check, 100);
+      };
+      check();
+    });
+
     let s = null;
     try {
       // 1. Try to get media stream with fallback constraints
@@ -1338,31 +1355,55 @@ function TrackingScreen({ exercise, onFinish }) {
       return;
     }
 
-    // 2. Initialize TF.js Backend with fallback to CPU if WebGL fails
+    // 2. Wait for TF.js libs then initialize backend + model
     try {
+      setModelStatus('Loading TensorFlow.js...');
+      let tfLib, pdLib;
+      try {
+        ({ tfLib, pdLib } = await waitForTF());
+      } catch (cdnErr) {
+        console.error("CDN load failure:", cdnErr);
+        if (isMountedRef.current) {
+          setCamError('TensorFlow.js failed to load. Check your internet connection and refresh.');
+          setModelStatus('');
+        }
+        return;
+      }
+
+      if (!isMountedRef.current) return;
+
       setModelStatus('Initializing TensorFlow.js...');
       try {
-        await tf.setBackend('webgl');
-        await tf.ready();
+        await tfLib.setBackend('webgl');
+        await tfLib.ready();
       } catch (webglErr) {
         console.warn("WebGL backend unavailable for TF.js, using CPU fallback...", webglErr);
         try {
-          await tf.setBackend('cpu');
-          await tf.ready();
+          await tfLib.setBackend('cpu');
+          await tfLib.ready();
         } catch (cpuErr) {
           console.warn("CPU backend setup error:", cpuErr);
         }
       }
 
-      setModelStatus('Loading MoveNet Pose Model...');
-      const detectorConfig = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
-      detectorRef.current = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+      if (!isMountedRef.current) return;
 
+      setModelStatus('Loading MoveNet Pose Model...');
+      const detectorConfig = { modelType: pdLib.movenet.modelType.SINGLEPOSE_LIGHTNING };
+      detectorRef.current = await pdLib.createDetector(pdLib.SupportedModels.MoveNet, detectorConfig);
+
+      if (!detectorRef.current) throw new Error('MoveNet detector returned null.');
+
+      console.log('✅ TrueForm: MoveNet model loaded successfully.');
       if (isMountedRef.current) setModelStatus('');
 
     } catch (modelErr) {
       console.error("TF.js MoveNet initialization error:", modelErr);
-      if (isMountedRef.current) setModelStatus('');
+      if (isMountedRef.current) {
+        // Show error in camError so the user sees a useful message; clear spinner
+        setCamError('AI model failed to load. Please refresh the page to retry.');
+        setModelStatus('');
+      }
     }
   }, []);
 
@@ -1784,9 +1825,23 @@ function TrackingScreen({ exercise, onFinish }) {
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
 
           {camError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10">
-              <AlertCircle className="w-8 h-8 text-[#e2723b] mb-2" />
-              <p className="text-[#e2723b] text-xs font-semibold">{camError}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 p-4 text-center gap-3">
+              <AlertCircle className="w-10 h-10 text-[#e2723b]" />
+              <p className="text-white/80 text-xs font-semibold max-w-[220px] leading-relaxed">{camError}</p>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => { setCamError(''); initCameraAndModel(); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#e2723b]/80 text-white text-xs font-bold hover:bg-[#e2723b] transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Retry
+                </button>
+                <button
+                  onClick={startSimulationMode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-white/70 text-xs font-bold hover:bg-white/15 transition-colors"
+                >
+                  <Activity className="w-3 h-3" /> Use Simulator
+                </button>
+              </div>
             </div>
           )}
           {modelStatus && !camError && (
