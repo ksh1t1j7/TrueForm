@@ -12,11 +12,67 @@ import SplashCursor from './SplashCursor';
 
 // TensorFlow.js from Global Scope (loaded via CDN in index.html)
 // NOTE: Read dynamically inside functions to avoid race conditions with CDN load timing.
-// Use getTF() / getPoseDetection() everywhere instead of top-level capture.
 const getTF = () => window.tf;
 const getPoseDetection = () => window.poseDetection;
-// mobilenet kept as a lazy accessor too
 const getMobileNet = () => window.mobilenet;
+
+/* ─── MoveNet Singleton ──────────────────────────────────────────── */
+// The detector is EXPENSIVE to create (downloads ~5 MB model weights from CDN).
+// We keep it as a module-level singleton so it is created ONCE regardless of
+// how many times the TrackingScreen component mounts/unmounts (e.g. switching exercises).
+let gDetector = null;         // the MoveNet detector instance
+let gInitPromise = null;      // Promise<void> — prevents double-init on concurrent mounts
+
+async function initGlobalDetector(onStatus) {
+  // Already created — return immediately
+  if (gDetector) { onStatus(''); return; }
+
+  // Already being created by another mount — wait for it
+  if (gInitPromise) { await gInitPromise; onStatus(''); return; }
+
+  // First call — do the real work
+  gInitPromise = (async () => {
+    // 1. Wait for CDN scripts (up to 15 s)
+    await new Promise((resolve, reject) => {
+      let tries = 0;
+      const check = () => {
+        const tf = getTF(); const pd = getPoseDetection();
+        if (tf && pd && pd.movenet) { resolve(); return; }
+        if (++tries > 150) { reject(new Error('TF.js CDN failed to load in 15 s')); return; }
+        setTimeout(check, 100);
+      };
+      check();
+    });
+
+    const tf = getTF(); const pd = getPoseDetection();
+
+    // 2. Initialise TF backend
+    onStatus('Initializing TensorFlow.js...');
+    try {
+      await tf.setBackend('webgl'); await tf.ready();
+    } catch (_) {
+      try { await tf.setBackend('cpu'); await tf.ready(); } catch (__) {}
+    }
+
+    // 3. Load MoveNet
+    onStatus('Loading MoveNet Pose Model...');
+    gDetector = await pd.createDetector(
+      pd.SupportedModels.MoveNet,
+      { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+    if (!gDetector) throw new Error('MoveNet detector returned null');
+    console.log('✅ TrueForm: MoveNet singleton loaded.');
+    onStatus('');
+  })();
+
+  try {
+    await gInitPromise;
+  } catch (err) {
+    console.error('❌ TrueForm: MoveNet init failed:', err);
+    gInitPromise = null; // allow retry
+    throw err;
+  }
+}
 
 /* ─── FluidShaderBackground ─────────────────────────────────── */
 const VERT_SRC = `
@@ -1322,112 +1378,43 @@ function TrackingScreen({ exercise, onFinish }) {
 
   const isSimulatingRef = useRef(false);
 
-  /* Initialize Camera and Model */
-  const initCameraAndModel = useCallback(async () => {
+  /* ── Camera Only (model is a global singleton) ── */
+  const initCamera = useCallback(async () => {
     if (!isMountedRef.current) return;
     setCamError('');
     setCamActive(false);
     isSimulatingRef.current = false;
-    setModelStatus('Requesting camera access...');
-
-    // ── 0. Wait for TF.js CDN scripts to fully load (up to 10s) ──
-    const waitForTF = () => new Promise((resolve, reject) => {
-      let attempts = 0;
-      const check = () => {
-        const tfLib = getTF();
-        const pdLib = getPoseDetection();
-        if (tfLib && pdLib && pdLib.movenet) { resolve({ tfLib, pdLib }); return; }
-        attempts++;
-        if (attempts > 100) { reject(new Error('TensorFlow.js CDN scripts failed to load after 10 seconds.')); return; }
-        setTimeout(check, 100);
-      };
-      check();
-    });
+    setModelStatus('Requesting camera...');
 
     let s = null;
     try {
-      // 1. Try to get media stream with fallback constraints
       try {
         s = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
           audio: false
         });
-      } catch (err1) {
-        console.warn("Ideal video constraints failed, trying default constraints:", err1);
+      } catch (_) {
         s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
-
-      if (!isMountedRef.current) {
-        if (s) s.getTracks().forEach(t => t.stop());
-        return;
-      }
-
+      if (!isMountedRef.current) { if (s) s.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = s;
       if (videoRef.current) {
         videoRef.current.srcObject = s;
-        await videoRef.current.play().catch(e => console.warn("Video play error:", e));
+        await videoRef.current.play().catch(e => console.warn('Video play error:', e));
       }
       setCamActive(true);
-
+      // Model might already be loaded (singleton); clear spinner if so
+      if (gDetector && isMountedRef.current) setModelStatus('');
     } catch (camErr) {
-      console.warn("Webcam access unavailable:", camErr);
+      console.warn('Webcam unavailable:', camErr);
       if (!isMountedRef.current) return;
       setCamError('Camera access denied or unavailable. You can retry or use the simulator.');
       setModelStatus('');
-      return;
-    }
-
-    // 2. Wait for TF.js libs then initialize backend + model
-    try {
-      setModelStatus('Loading TensorFlow.js...');
-      let tfLib, pdLib;
-      try {
-        ({ tfLib, pdLib } = await waitForTF());
-      } catch (cdnErr) {
-        console.error("CDN load failure:", cdnErr);
-        if (isMountedRef.current) {
-          setCamError('TensorFlow.js failed to load. Check your internet connection and refresh.');
-          setModelStatus('');
-        }
-        return;
-      }
-
-      if (!isMountedRef.current) return;
-
-      setModelStatus('Initializing TensorFlow.js...');
-      try {
-        await tfLib.setBackend('webgl');
-        await tfLib.ready();
-      } catch (webglErr) {
-        console.warn("WebGL backend unavailable for TF.js, using CPU fallback...", webglErr);
-        try {
-          await tfLib.setBackend('cpu');
-          await tfLib.ready();
-        } catch (cpuErr) {
-          console.warn("CPU backend setup error:", cpuErr);
-        }
-      }
-
-      if (!isMountedRef.current) return;
-
-      setModelStatus('Loading MoveNet Pose Model...');
-      const detectorConfig = { modelType: pdLib.movenet.modelType.SINGLEPOSE_LIGHTNING };
-      detectorRef.current = await pdLib.createDetector(pdLib.SupportedModels.MoveNet, detectorConfig);
-
-      if (!detectorRef.current) throw new Error('MoveNet detector returned null.');
-
-      console.log('✅ TrueForm: MoveNet model loaded successfully.');
-      if (isMountedRef.current) setModelStatus('');
-
-    } catch (modelErr) {
-      console.error("TF.js MoveNet initialization error:", modelErr);
-      if (isMountedRef.current) {
-        // Show error in camError so the user sees a useful message; clear spinner
-        setCamError('AI model failed to load. Please refresh the page to retry.');
-        setModelStatus('');
-      }
     }
   }, []);
+
+  // Keep a local ref pointing to the global detector so runDetection can see it
+  const detectorReadyRef = useRef(false);
 
   const startSimulationMode = () => {
     setCamError('');
@@ -1438,13 +1425,27 @@ function TrackingScreen({ exercise, onFinish }) {
 
   useEffect(() => {
     isMountedRef.current = true;
-    initCameraAndModel();
+
+    // Start camera and global model init in parallel
+    initCamera();
+    initGlobalDetector((status) => {
+      if (isMountedRef.current) setModelStatus(status);
+    }).then(() => {
+      detectorReadyRef.current = true;
+      if (isMountedRef.current) setModelStatus('');
+    }).catch((err) => {
+      if (isMountedRef.current) {
+        setCamError('AI model failed to load. Please refresh the page to retry.');
+        setModelStatus('');
+      }
+    });
+
     return () => {
       isMountedRef.current = false;
       if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
       if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     };
-  }, [initCameraAndModel]);
+  }, [initCamera]);
 
   /* ML Inference Loop */
   const runDetection = useCallback(async () => {
@@ -1611,7 +1612,7 @@ function TrackingScreen({ exercise, onFinish }) {
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const detector = detectorRef.current;
+      const detector = gDetector; // Use the global singleton — never null after first load
 
       if (detector && canvas && video && video.readyState >= 2) {
         const vw = video.videoWidth || 640;
@@ -1931,7 +1932,7 @@ function TrackingScreen({ exercise, onFinish }) {
               <p className="text-white/80 text-xs font-semibold max-w-[220px] leading-relaxed">{camError}</p>
               <div className="flex gap-2 mt-1">
                 <button
-                  onClick={() => { setCamError(''); initCameraAndModel(); }}
+                  onClick={() => { setCamError(''); initCamera(); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#e2723b]/80 text-white text-xs font-bold hover:bg-[#e2723b] transition-colors"
                 >
                   <RefreshCw className="w-3 h-3" /> Retry
