@@ -218,6 +218,24 @@ function FluidShaderBackground() {
 }
 
 
+/* ─── Kinematic Math Helpers ────────────────────────────────── */
+/**
+ * Calculate the angle (in degrees) at vertex point p2 formed by the
+ * line segments p1→p2 and p3→p2.  Uses the standard dot-product formula.
+ */
+function calcAngle3P(p1, p2, p3) {
+  const v1x = p1.x - p2.x;
+  const v1y = p1.y - p2.y;
+  const v2x = p3.x - p2.x;
+  const v2y = p3.y - p2.y;
+  const dot = v1x * v2x + v1y * v2y;
+  const mag1 = Math.sqrt(v1x * v1x + v1y * v1y);
+  const mag2 = Math.sqrt(v2x * v2x + v2y * v2y);
+  if (mag1 === 0 || mag2 === 0) return 0;
+  const cosA = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+  return (Math.acos(cosA) * 180) / Math.PI;
+}
+
 /* ─── Constants ─────────────────────────────────────────────── */
 const EXERCISES = [
   {
@@ -237,6 +255,10 @@ const EXERCISES = [
     unit: '°',
     description: 'Glenohumeral joint orbit tracking for shoulder range of motion and extension assessment.',
     tags: ['Shoulder', 'Extension', 'Upper Body'],
+    // Primary joints: hip → shoulder → elbow (angle at shoulder)
+    // Bilateral: both sides listed; inference picks the side with better confidence
+    joints: ['left_hip', 'left_shoulder', 'left_elbow'],
+    jointsAlt: ['right_hip', 'right_shoulder', 'right_elbow'],
   },
 ];
 
@@ -1622,10 +1644,33 @@ function TrackingScreen({ exercise, onFinish }) {
               calculatedAngle = rawAngle;
               isUserMoving = true;
             }
+          } else if (exercise.id === 'arm_rotation') {
+            // Bilateral: try left side first, then right side, pick the side where
+            // all three keypoints exist.  If both exist pick the one with higher
+            // average confidence (more reliable reading).
+            const lHip = kMap['left_hip'],  lSho = kMap['left_shoulder'],  lElb = kMap['left_elbow'];
+            const rHip = kMap['right_hip'], rSho = kMap['right_shoulder'], rElb = kMap['right_elbow'];
+            const leftOk  = !!(lHip && lSho && lElb);
+            const rightOk = !!(rHip && rSho && rElb);
+            let p1, p2, p3;
+            if (leftOk && rightOk) {
+              // pick the side with higher average score
+              const leftConf  = (lHip.score + lSho.score + lElb.score) / 3;
+              const rightConf = (rHip.score + rSho.score + rElb.score) / 3;
+              if (leftConf >= rightConf) { p1 = lHip; p2 = lSho; p3 = lElb; }
+              else                        { p1 = rHip; p2 = rSho; p3 = rElb; }
+            } else if (leftOk)  { p1 = lHip; p2 = lSho; p3 = lElb; }
+            else if (rightOk)   { p1 = rHip; p2 = rSho; p3 = rElb; }
+            if (p1 && p2 && p3) {
+              calculatedAngle = calcAngle3P(p1, p2, p3);
+              isUserMoving = true;
+            }
           } else {
-            const p1 = kMap[exercise.joints[0]];
-            const p2 = kMap[exercise.joints[1]];
-            const p3 = kMap[exercise.joints[2]];
+            // Generic 3-joint fallback for any future exercises with a joints array
+            const joints = exercise.joints || [];
+            const p1 = kMap[joints[0]];
+            const p2 = kMap[joints[1]];
+            const p3 = kMap[joints[2]];
             if (p1 && p2 && p3) {
               calculatedAngle = calcAngle3P(p1, p2, p3);
               isUserMoving = true;
@@ -1647,9 +1692,17 @@ function TrackingScreen({ exercise, onFinish }) {
           if (exercise.id === 'head_rotation') {
              drawBone('nose', 'left_eye'); drawBone('left_eye', 'left_ear');
              drawBone('nose', 'right_eye'); drawBone('right_eye', 'right_ear');
+          } else if (exercise.id === 'arm_rotation') {
+            // Draw whichever arm side was used (both if visible)
+            drawBone('left_hip', 'left_shoulder'); drawBone('left_shoulder', 'left_elbow');
+            drawBone('right_hip', 'right_shoulder'); drawBone('right_shoulder', 'right_elbow');
+            // Also draw torso connector for context
+            drawBone('left_shoulder', 'right_shoulder');
+            drawBone('left_hip', 'right_hip');
           } else {
-             drawBone(exercise.joints[0], exercise.joints[1]);
-             drawBone(exercise.joints[1], exercise.joints[2]);
+             const joints = exercise.joints || [];
+             drawBone(joints[0], joints[1]);
+             drawBone(joints[1], joints[2]);
           }
 
           Object.values(kMap).forEach(k => {
