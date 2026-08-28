@@ -43,10 +43,22 @@
       #root { min-height: 100dvh; }
     </style>
 
-    <!-- TensorFlow.js and Pose Detection via CDN to bypass Vite bundling errors with @mediapipe/pose -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <!-- TensorFlow.js + MoveNet via CDN -->
+    <!-- Using crossorigin for proper CORS handling, and a ready sentinel -->
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <script>
+      // Sentinel: marks when ALL CDN scripts have executed synchronously.
+      // Our React app polls window._cdnReady before using tf / poseDetection.
+      window._cdnReady = !!(window.tf && window.poseDetection && window.poseDetection.movenet);
+      if (!window._cdnReady) {
+        // Retry once on next tick in case of ordering quirk
+        setTimeout(function() {
+          window._cdnReady = !!(window.tf && window.poseDetection && window.poseDetection.movenet);
+        }, 50);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

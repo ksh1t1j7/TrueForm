@@ -17,51 +17,93 @@ const getPoseDetection = () => window.poseDetection;
 const getMobileNet = () => window.mobilenet;
 
 /* ─── MoveNet Singleton ──────────────────────────────────────────── */
-// The detector is EXPENSIVE to create (downloads ~5 MB model weights from CDN).
-// We keep it as a module-level singleton so it is created ONCE regardless of
-// how many times the TrackingScreen component mounts/unmounts (e.g. switching exercises).
-let gDetector = null;         // the MoveNet detector instance
-let gInitPromise = null;      // Promise<void> — prevents double-init on concurrent mounts
+let gDetector = null;
+let gInitPromise = null;
 
 async function initGlobalDetector(onStatus) {
-  // Already created — return immediately
   if (gDetector) { onStatus(''); return; }
+  if (gInitPromise) {
+    try { await gInitPromise; } catch (_) {}
+    onStatus('');
+    return;
+  }
 
-  // Already being created by another mount — wait for it
-  if (gInitPromise) { await gInitPromise; onStatus(''); return; }
-
-  // First call — do the real work
   gInitPromise = (async () => {
-    // 1. Wait for CDN scripts (up to 15 s)
+    // ── 1. Wait for CDN scripts (poll up to 20 s) ─────────────────
+    onStatus('Waiting for TensorFlow.js...');
     await new Promise((resolve, reject) => {
       let tries = 0;
       const check = () => {
-        const tf = getTF(); const pd = getPoseDetection();
-        if (tf && pd && pd.movenet) { resolve(); return; }
-        if (++tries > 150) { reject(new Error('TF.js CDN failed to load in 15 s')); return; }
+        const tf = window.tf;
+        const pd = window.poseDetection;
+        const ready = tf && pd && pd.SupportedModels && pd.SupportedModels.MoveNet && pd.movenet;
+        if (ready) { console.log('✅ CDN scripts loaded'); resolve(); return; }
+        if (++tries > 200) { reject(new Error('TF.js CDN timeout (20 s). Check internet connection.')); return; }
         setTimeout(check, 100);
       };
       check();
     });
 
-    const tf = getTF(); const pd = getPoseDetection();
+    const tf = window.tf;
+    const pd = window.poseDetection;
 
-    // 2. Initialise TF backend
+    // ── 2. Set up TF backend ───────────────────────────────────────
     onStatus('Initializing TensorFlow.js...');
+    console.log('⚙️ TF.js version:', tf.version.tfjs);
     try {
-      await tf.setBackend('webgl'); await tf.ready();
-    } catch (_) {
-      try { await tf.setBackend('cpu'); await tf.ready(); } catch (__) {}
+      // Try WebGL first (GPU-accelerated)
+      await tf.setBackend('webgl');
+      await tf.ready();
+      console.log('✅ WebGL backend ready');
+    } catch (webglErr) {
+      console.warn('⚠️ WebGL failed, falling back to CPU:', webglErr.message);
+      try {
+        await tf.setBackend('cpu');
+        await tf.ready();
+        console.log('✅ CPU backend ready');
+      } catch (cpuErr) {
+        console.warn('⚠️ CPU backend error (continuing anyway):', cpuErr.message);
+      }
     }
 
-    // 3. Load MoveNet
+    // ── 3. Create MoveNet detector ─────────────────────────────────
     onStatus('Loading MoveNet Pose Model...');
-    gDetector = await pd.createDetector(
-      pd.SupportedModels.MoveNet,
-      { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
-    );
-    if (!gDetector) throw new Error('MoveNet detector returned null');
-    console.log('✅ TrueForm: MoveNet singleton loaded.');
+    console.log('⏳ Creating MoveNet detector...');
+
+    const detectorConfig = {
+      modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING,
+    };
+
+    try {
+      gDetector = await pd.createDetector(pd.SupportedModels.MoveNet, detectorConfig);
+    } catch (detErr) {
+      console.error('❌ createDetector failed:', detErr);
+      throw detErr;
+    }
+
+    if (!gDetector) throw new Error('MoveNet createDetector returned null/undefined');
+    console.log('✅ MoveNet detector created:', gDetector);
+
+    // ── 4. Warmup inference (compiles WebGL shaders) ───────────────
+    // Without this, the FIRST real frame takes ~2-3 s to process because
+    // WebGL shader compilation blocks. Run a dummy inference on a black frame.
+    try {
+      const warmupCanvas = document.createElement('canvas');
+      warmupCanvas.width = 192; warmupCanvas.height = 192;
+      const warmupCtx = warmupCanvas.getContext('2d');
+      warmupCtx.fillStyle = '#111'; warmupCtx.fillRect(0, 0, 192, 192);
+      const warmupResult = await gDetector.estimatePoses(warmupCanvas, { maxPoses: 1 });
+      console.log('✅ Warmup inference done, result length:', warmupResult.length);
+    } catch (warmupErr) {
+      // Non-fatal — warmup failure just means first frame is slower
+      console.warn('⚠️ Warmup inference failed (non-fatal):', warmupErr.message);
+    }
+
+    // Expose for debugging in DevTools
+    window.__trueformDetector = gDetector;
+    window.__trueformTF = tf;
+
+    console.log('🚀 TrueForm: MoveNet ready. window.__trueformDetector is set for debugging.');
     onStatus('');
   })();
 
@@ -69,10 +111,11 @@ async function initGlobalDetector(onStatus) {
     await gInitPromise;
   } catch (err) {
     console.error('❌ TrueForm: MoveNet init failed:', err);
-    gInitPromise = null; // allow retry
+    gInitPromise = null; // allow retry on next mount
     throw err;
   }
 }
+
 
 /* ─── FluidShaderBackground ─────────────────────────────────── */
 const VERT_SRC = `
