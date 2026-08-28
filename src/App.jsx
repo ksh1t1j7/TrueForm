@@ -1463,186 +1463,238 @@ function TrackingScreen({ exercise, onFinish }) {
 
       prevTimeRef.current = performance.now();
 
+      // Offscreen canvas — draw each video frame here, then feed to MoveNet.
+      // estimatePoses(videoElement) can silently return [] in some browsers
+      // because the GPU texture isn't accessible. The offscreen canvas forces
+      // a CPU-readable pixel buffer that MoveNet can always process.
+      const offscreen = document.createElement('canvas');
+      offscreen.width  = 256;
+      offscreen.height = 256;
+      const offCtx = offscreen.getContext('2d');
+
+      // Helper: angle of shoulder→elbow from straight-down vertical
+      // 0° = arm hanging down, 90° = horizontal, 170° = overhead
+      function armAngle(shoulder, elbow) {
+        const dx = elbow.x - shoulder.x;
+        const dy = elbow.y - shoulder.y; // +y = down in image coords
+        return Math.min(Math.abs((Math.atan2(dx, dy) * 180) / Math.PI), 175);
+      }
+
       const loop = async () => {
         if (cancelled) return;
         const video  = videoRef.current;
         const canvas = canvasRef.current;
 
-        if (gDetector && canvas && video && video.readyState >= 2) {
-          const vw = video.videoWidth  || 640;
-          const vh = video.videoHeight || 480;
-          if (canvas.width !== vw || canvas.height !== vh) { canvas.width = vw; canvas.height = vh; }
-
+        if (gDetector && canvas && video && video.readyState >= 2 && video.videoWidth > 0) {
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          if (canvas.width !== vw || canvas.height !== vh) {
+            canvas.width = vw;
+            canvas.height = vh;
+          }
           const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.clearRect(0, 0, vw, vh);
 
+          // Copy current video frame into offscreen buffer
+          offCtx.drawImage(video, 0, 0, offscreen.width, offscreen.height);
+
+          let poses = [];
           try {
-            const poses = await gDetector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
+            poses = await gDetector.estimatePoses(offscreen, { maxPoses: 1, flipHorizontal: false });
+          } catch (e) {
+            console.error('[TrueForm] estimatePoses error:', e.message);
+          }
 
-            if (poses.length > 0 && poses[0].keypoints) {
-              const kps = poses[0].keypoints;
-              const kMap = {};
-              kps.forEach(k => { if (k.score > 0.10) kMap[k.name] = k; });
+          // Scale from offscreen (256×256) → display canvas (vw×vh)
+          const scaleX = vw / offscreen.width;
+          const scaleY = vh / offscreen.height;
 
-              let calculatedAngle = 0;
-              let isUserMoving = false;
+          if (poses.length > 0 && poses[0].keypoints && poses[0].keypoints.length > 0) {
+            const kps = poses[0].keypoints;
 
-              if (exercise.id === 'head_rotation') {
-                if (kMap.nose && kMap.left_ear && kMap.right_ear) {
-                  const earDist = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
-                  const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
-                  const dx = Math.abs(kMap.nose.x - earCenter);
-                  calculatedAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
-                  isUserMoving = true;
-                }
-              } else if (exercise.id === 'arm_rotation') {
-                const lS = kMap.left_shoulder,  lE = kMap.left_elbow;
-                const rS = kMap.right_shoulder, rE = kMap.right_elbow;
-                if (lS && lE && rS && rE) {
-                  calculatedAngle = Math.max(calcArmAngle(lS, lE), calcArmAngle(rS, rE));
-                  isUserMoving = true;
-                } else if (lS && lE) {
-                  calculatedAngle = calcArmAngle(lS, lE);
-                  isUserMoving = true;
-                } else if (rS && rE) {
-                  calculatedAngle = calcArmAngle(rS, rE);
-                  isUserMoving = true;
-                }
-              } else {
-                const j = exercise.joints || [];
-                const p1 = kMap[j[0]], p2 = kMap[j[1]], p3 = kMap[j[2]];
-                if (p1 && p2 && p3) { calculatedAngle = calcAngle3P(p1, p2, p3); isUserMoving = true; }
+            // Build scaled kMap at very low threshold so we always see something
+            const kMap = {};
+            kps.forEach(k => {
+              if (k.score > 0.05) {
+                kMap[k.name] = { ...k, x: k.x * scaleX, y: k.y * scaleY };
               }
+            });
 
-              const bone = (a, b, col = '#e2723b') => {
-                if (kMap[a] && kMap[b]) {
-                  ctx.strokeStyle = col; ctx.lineWidth = 3;
-                  ctx.beginPath(); ctx.moveTo(kMap[a].x, kMap[a].y);
-                  ctx.lineTo(kMap[b].x, kMap[b].y); ctx.stroke();
-                }
-              };
+            // ── Angle calculation ────────────────────────────────────
+            let calculatedAngle = 0;
+            let isUserMoving = false;
 
-              if (exercise.id === 'head_rotation') {
-                bone('nose','left_eye'); bone('left_eye','left_ear');
-                bone('nose','right_eye'); bone('right_eye','right_ear');
-                bone('left_shoulder','right_shoulder','rgba(255,255,255,0.35)');
-              } else if (exercise.id === 'arm_rotation') {
-                bone('left_shoulder','left_elbow'); bone('left_elbow','left_wrist');
-                bone('right_shoulder','right_elbow'); bone('right_elbow','right_wrist');
-                bone('left_shoulder','right_shoulder','rgba(255,255,255,0.35)');
-                ['left_shoulder','right_shoulder'].forEach(name => {
-                  const s = kMap[name];
-                  if (s) {
-                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-                    ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
-                    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y + 130); ctx.stroke();
-                    ctx.setLineDash([]);
-                  }
-                });
-              } else {
-                const j = exercise.joints || [];
-                bone(j[0], j[1]); bone(j[1], j[2]);
+            if (exercise.id === 'head_rotation') {
+              if (kMap.nose && kMap.left_ear && kMap.right_ear) {
+                const earDist   = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
+                const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
+                const dx        = Math.abs(kMap.nose.x - earCenter);
+                calculatedAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
+                isUserMoving = true;
               }
-
-              kps.forEach(k => {
-                if (k.score < 0.10) return;
-                const a = Math.min(1, k.score * 2);
-                ctx.fillStyle = `rgba(226,114,59,${a})`;
-                ctx.beginPath(); ctx.arc(k.x, k.y, 4 + a * 3, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.5; ctx.stroke();
-              });
-
-              smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
-              const activeAngle = smoothedAngleRef.current;
-
-              const now = performance.now();
-              const dt  = Math.max((now - prevTimeRef.current) / 1000, 0.001);
-              prevTimeRef.current = now;
-
-              const peakLimit = exercise.targetRange.min;
-              const restLimit = exercise.id === 'head_rotation' ? 20 : 30;
-
-              if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
-              if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
-
-              if (activeAngle > peakLimit && !isFlexingRef.current) {
-                isFlexingRef.current = true;
-                if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-                repStartTimeRef.current = now;
-              } else if (activeAngle < restLimit && isFlexingRef.current) {
-                isFlexingRef.current = false;
-                if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-                repStartTimeRef.current = now;
-                repCountRef.current += 1;
-                if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
-                currentRepPeakRef.current = 0;
-                playChime();
+            } else if (exercise.id === 'arm_rotation') {
+              const lS = kMap.left_shoulder,  lE = kMap.left_elbow;
+              const rS = kMap.right_shoulder, rE = kMap.right_elbow;
+              const lA = (lS && lE) ? armAngle(lS, lE) : 0;
+              const rA = (rS && rE) ? armAngle(rS, rE) : 0;
+              if (lS || rS) {                  // at least one shoulder visible
+                calculatedAngle = Math.max(lA, rA);
+                isUserMoving = true;
               }
-
-              if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
-              const velocity = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
-              prevAngleRef.current = activeAngle;
-
-              const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
-              prevVelRef.current = velocity;
-
-              if (activeAngle > restLimit + 5) tutRef.current += dt;
-
-              const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
-              prevAccelRef.current = accel;
-              jerkAccumRef.current.push(jerkSample);
-              if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
-              const avgJerk   = jerkAccumRef.current.reduce((a, b) => a + b, 0) / (jerkAccumRef.current.length || 1);
-              const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
-
-              let symmetry = 100;
-              if (repPeaksRef.current.length >= 2) {
-                const peaks = repPeaksRef.current;
-                const mean  = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-                const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
-                symmetry = mean > 0 ? Math.max(0, Math.round(100 - (Math.sqrt(variance) / mean) * 100)) : 100;
-              }
-
-              const tMin = exercise.targetRange.min, tMax = exercise.targetRange.max;
-              romUtilRef.current = (tMax - tMin) > 0
-                ? Math.min(100, Math.round(((peakAngleRef.current - minAngleRef.current) / (tMax - tMin)) * 100)) : 0;
-
-              let fatigue = 0;
-              if (repPeaksRef.current.length >= 4) {
-                const rp = repPeaksRef.current;
-                const h1 = rp.slice(0, Math.floor(rp.length / 2));
-                const h2 = rp.slice(Math.floor(rp.length / 2));
-                const a1 = h1.reduce((a, b) => a + b, 0) / h1.length;
-                const a2 = h2.reduce((a, b) => a + b, 0) / h2.length;
-                fatigue = a1 > 0 ? Math.max(0, Math.round(((a1 - a2) / a1) * 100)) : 0;
-              }
-
-              caloriesRef.current = Math.round(3.5 * 70 * (tutRef.current / 3600));
-
-              const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
-              historyRef.current.push(activeAngle);
-              if (historyRef.current.length > 600) historyRef.current.shift();
-              formScoreRef.current = historyRef.current.length > 0
-                ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
-
-              frameSkipRef.current++;
-              if (frameSkipRef.current % 3 === 0 && !cancelled) {
-                setUiAngle(activeAngle); setUiVel(velocity);
-                setUiReps(repCountRef.current); setUiPeak(peakAngleRef.current);
-                setUiForm(formScoreRef.current); setUiMoving(isUserMoving);
-                setUiFlexing(isFlexingRef.current); setUiAccel(accel);
-                setUiTUT(tutRef.current);
-                setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
-                setUiSymmetry(symmetry); setUiRomUtil(romUtilRef.current);
-                setUiFatigue(fatigue); setUiJerk(smoothness); setUiCalories(caloriesRef.current);
+            } else {
+              const j  = exercise.joints || [];
+              const p1 = kMap[j[0]], p2 = kMap[j[1]], p3 = kMap[j[2]];
+              if (p1 && p2 && p3) {
+                calculatedAngle = calcAngle3P(p1, p2, p3);
+                isUserMoving = true;
               }
             }
-          } catch (inferErr) {
-            console.error('Inference error:', inferErr);
+
+            // ── Draw bones ───────────────────────────────────────────
+            const bone = (a, b, col = '#e2723b', w = 3) => {
+              if (!kMap[a] || !kMap[b]) return;
+              ctx.strokeStyle = col; ctx.lineWidth = w;
+              ctx.beginPath();
+              ctx.moveTo(kMap[a].x, kMap[a].y);
+              ctx.lineTo(kMap[b].x, kMap[b].y);
+              ctx.stroke();
+            };
+
+            // Always draw full body — whatever joints are visible
+            bone('left_shoulder',  'right_shoulder', 'rgba(255,255,255,0.5)', 2);
+            bone('left_shoulder',  'left_elbow',     '#e2723b');
+            bone('left_elbow',     'left_wrist',     '#e2723b');
+            bone('right_shoulder', 'right_elbow',    '#e2723b');
+            bone('right_elbow',    'right_wrist',    '#e2723b');
+            bone('nose',           'left_eye',       'rgba(255,255,120,0.8)', 2);
+            bone('left_eye',       'left_ear',       'rgba(255,255,120,0.8)', 2);
+            bone('nose',           'right_eye',      'rgba(255,255,120,0.8)', 2);
+            bone('right_eye',      'right_ear',      'rgba(255,255,120,0.8)', 2);
+            bone('left_shoulder',  'left_hip',       'rgba(255,255,255,0.25)', 2);
+            bone('right_shoulder', 'right_hip',      'rgba(255,255,255,0.25)', 2);
+            bone('left_hip',       'right_hip',      'rgba(255,255,255,0.25)', 2);
+
+            // Dashed reference line from shoulders (arm rotation)
+            if (exercise.id === 'arm_rotation') {
+              ['left_shoulder', 'right_shoulder'].forEach(name => {
+                const s = kMap[name];
+                if (!s) return;
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y + 120);
+                ctx.stroke();
+                ctx.setLineDash([]);
+              });
+            }
+
+            // ── Draw ALL keypoints (no threshold skip) ───────────────
+            kps.forEach(k => {
+              const sx    = k.x * scaleX, sy = k.y * scaleY;
+              const alpha = Math.max(0.15, Math.min(1, k.score * 3));
+              const r     = k.score > 0.5 ? 7 : (k.score > 0.2 ? 5 : 3);
+              ctx.fillStyle   = `rgba(226,114,59,${alpha})`;
+              ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+              ctx.fill(); ctx.stroke();
+            });
+
+            // ── Biomechanics ─────────────────────────────────────────
+            smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
+            const activeAngle = smoothedAngleRef.current;
+
+            const now = performance.now();
+            const dt  = Math.max((now - prevTimeRef.current) / 1000, 0.001);
+            prevTimeRef.current = now;
+
+            const peakLimit = exercise.targetRange.min;
+            const restLimit = exercise.id === 'head_rotation' ? 20 : 30;
+
+            if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
+            if (activeAngle < minAngleRef.current)       minAngleRef.current       = activeAngle;
+
+            if (activeAngle > peakLimit && !isFlexingRef.current) {
+              isFlexingRef.current = true;
+              if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+              repStartTimeRef.current = now;
+            } else if (activeAngle < restLimit && isFlexingRef.current) {
+              isFlexingRef.current = false;
+              if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+              repStartTimeRef.current = now;
+              repCountRef.current += 1;
+              if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
+              currentRepPeakRef.current = 0;
+              playChime();
+            }
+
+            if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
+
+            const velocity = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
+            prevAngleRef.current = activeAngle;
+
+            const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
+            prevVelRef.current = velocity;
+
+            if (activeAngle > restLimit + 5) tutRef.current += dt;
+
+            const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
+            prevAccelRef.current = accel;
+            jerkAccumRef.current.push(jerkSample);
+            if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
+            const avgJerk   = jerkAccumRef.current.reduce((a, b) => a + b, 0) / (jerkAccumRef.current.length || 1);
+            const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
+
+            let symmetry = 100;
+            if (repPeaksRef.current.length >= 2) {
+              const peaks    = repPeaksRef.current;
+              const mean     = peaks.reduce((a, b) => a + b, 0) / peaks.length;
+              const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
+              symmetry = mean > 0 ? Math.max(0, Math.round(100 - (Math.sqrt(variance) / mean) * 100)) : 100;
+            }
+
+            const tMin = exercise.targetRange.min, tMax = exercise.targetRange.max;
+            romUtilRef.current = (tMax - tMin) > 0
+              ? Math.min(100, Math.round(((peakAngleRef.current - minAngleRef.current) / (tMax - tMin)) * 100))
+              : 0;
+
+            let fatigue = 0;
+            if (repPeaksRef.current.length >= 4) {
+              const rp = repPeaksRef.current;
+              const h1 = rp.slice(0, Math.floor(rp.length / 2));
+              const h2 = rp.slice(Math.floor(rp.length / 2));
+              const a1 = h1.reduce((a, b) => a + b, 0) / h1.length;
+              const a2 = h2.reduce((a, b) => a + b, 0) / h2.length;
+              fatigue = a1 > 0 ? Math.max(0, Math.round(((a1 - a2) / a1) * 100)) : 0;
+            }
+
+            caloriesRef.current = Math.round(3.5 * 70 * (tutRef.current / 3600));
+
+            const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
+            historyRef.current.push(activeAngle);
+            if (historyRef.current.length > 600) historyRef.current.shift();
+            formScoreRef.current = historyRef.current.length > 0
+              ? Math.round((goodSamp / historyRef.current.length) * 100)
+              : 100;
+
+            frameSkipRef.current++;
+            if (frameSkipRef.current % 3 === 0 && !cancelled) {
+              setUiAngle(activeAngle);      setUiVel(velocity);
+              setUiReps(repCountRef.current); setUiPeak(peakAngleRef.current);
+              setUiForm(formScoreRef.current); setUiMoving(isUserMoving);
+              setUiFlexing(isFlexingRef.current); setUiAccel(accel);
+              setUiTUT(tutRef.current);
+              setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
+              setUiSymmetry(symmetry);     setUiRomUtil(romUtilRef.current);
+              setUiFatigue(fatigue);       setUiJerk(smoothness);
+              setUiCalories(caloriesRef.current);
+            }
           }
         }
+
         if (!cancelled) rafId = requestAnimationFrame(loop);
       };
+
       rafId = requestAnimationFrame(loop);
     }
     run();
