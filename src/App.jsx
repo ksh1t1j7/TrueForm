@@ -1305,45 +1305,37 @@ function TrackingScreen({ exercise, onFinish }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const animRef = useRef(null);
-  const detectorRef = useRef(null);
-  const isMountedRef = useRef(true);
-
-  // State tracing
+  
+  // Refs for logic consistency
   const prevTimeRef = useRef(performance.now());
   const prevAngleRef = useRef(0);
   const historyRef = useRef([]);
-
   const isFlexingRef = useRef(false);
   const repCountRef = useRef(0);
   const peakAngleRef = useRef(0);
   const formScoreRef = useRef(100);
-
-  // Smoothing filter
   const smoothedAngleRef = useRef(0);
-
-  // ── Advanced Biomechanical Refs ──
-  const prevVelRef = useRef(0);           // for angular acceleration
-  const tutRef = useRef(0);               // cumulative time under tension (seconds)
-  const repStartTimeRef = useRef(null);   // start of current rep phase
-  const concentricTimeRef = useRef(0);    // current rep concentric (extension) duration
-  const eccentricTimeRef = useRef(0);     // current rep eccentric (return) duration
-  const repPeaksRef = useRef([]);         // peak angles per rep for symmetry calc
-  const currentRepPeakRef = useRef(0);    // track peak within current rep
+  const prevVelRef = useRef(0);
+  const tutRef = useRef(0);
+  const repStartTimeRef = useRef(null);
+  const concentricTimeRef = useRef(0);
+  const eccentricTimeRef = useRef(0);
+  const repPeaksRef = useRef([]);
+  const currentRepPeakRef = useRef(0);
   const romUtilRef = useRef(0);
-  const minAngleRef = useRef(180);        // track minimum angle for ROM util
-
-  // ── Session Intelligence Refs ──
-  const accelHistRef = useRef([]);        // recent acceleration samples for jerk
-  const caloriesRef = useRef(0);          // cumulative calorie estimate
-  const prevAccelRef = useRef(0);         // for jerk (d(accel)/dt)
-  const jerkAccumRef = useRef([]);        // sliding window jerk samples
+  const minAngleRef = useRef(180);
+  const accelHistRef = useRef([]);
+  const caloriesRef = useRef(0);
+  const prevAccelRef = useRef(0);
+  const jerkAccumRef = useRef([]);
+  const frameSkipRef = useRef(0);
+  const isSimulatingRef = useRef(false);
+  const startTimeRef = useRef(Date.now());
 
   const [camActive, setCamActive] = useState(false);
   const [camError, setCamError] = useState('');
   const [modelStatus, setModelStatus] = useState('Loading ML Model...');
 
-  // Decoupled state updates for smooth UI render
   const [uiAngle, setUiAngle] = useState(0);
   const [uiVel, setUiVel] = useState(0);
   const [uiReps, setUiReps] = useState(0);
@@ -1351,8 +1343,6 @@ function TrackingScreen({ exercise, onFinish }) {
   const [uiForm, setUiForm] = useState(100);
   const [uiMoving, setUiMoving] = useState(false);
   const [uiFlexing, setUiFlexing] = useState(false);
-
-  // ── Advanced UI State ──
   const [uiAccel, setUiAccel] = useState(0);
   const [uiTUT, setUiTUT] = useState(0);
   const [uiTempo, setUiTempo] = useState({ con: 0, ecc: 0 });
@@ -1361,60 +1351,265 @@ function TrackingScreen({ exercise, onFinish }) {
   const [uiFatigue, setUiFatigue] = useState(0);
   const [uiJerk, setUiJerk] = useState(0);
   const [uiCalories, setUiCalories] = useState(0);
-
   const [elapsed, setElapsed] = useState(0);
-  const startTimeRef = useRef(Date.now());
-  const frameSkipRef = useRef(0);
 
   const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  /* Timer */
   useEffect(() => {
-    const iv = setInterval(() => {
-      if (isMountedRef.current) setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
+    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000)), 1000);
     return () => clearInterval(iv);
   }, []);
 
-  const isSimulatingRef = useRef(false);
+  /* ─────────────────────────────────────────────────────────────────
+     SINGLE LIFECYCLE EFFECT — owns camera, model, and detection loop.
+  ───────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    let cancelled = false;
+    let rafId = null;
+    let stream = null;
 
-  /* ── Camera Only (model is a global singleton) ── */
-  const initCamera = useCallback(async () => {
-    if (!isMountedRef.current) return;
-    setCamError('');
-    setCamActive(false);
-    isSimulatingRef.current = false;
-    setModelStatus('Requesting camera...');
-
-    let s = null;
-    try {
-      try {
-        s = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-          audio: false
-        });
-      } catch (_) {
-        s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      }
-      if (!isMountedRef.current) { if (s) s.getTracks().forEach(t => t.stop()); return; }
-      streamRef.current = s;
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play().catch(e => console.warn('Video play error:', e));
-      }
-      setCamActive(true);
-      // Model might already be loaded (singleton); clear spinner if so
-      if (gDetector && isMountedRef.current) setModelStatus('');
-    } catch (camErr) {
-      console.warn('Webcam unavailable:', camErr);
-      if (!isMountedRef.current) return;
-      setCamError('Camera access denied or unavailable. You can retry or use the simulator.');
-      setModelStatus('');
+    function calcArmAngle(shoulder, elbow) {
+      const dx = elbow.x - shoulder.x;
+      const dy = elbow.y - shoulder.y;
+      const deg = Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
+      return Math.min(deg, 175);
     }
-  }, []);
 
-  // Keep a local ref pointing to the global detector so runDetection can see it
-  const detectorReadyRef = useRef(false);
+    async function run() {
+      setModelStatus('Requesting camera...');
+      setCamError('');
+
+      try {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            audio: false,
+          });
+        } catch (_) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        if (!cancelled) setCamActive(true);
+      } catch (camErr) {
+        if (!cancelled) {
+          setCamError('Camera access denied. You can retry or use the simulator.');
+          setModelStatus('');
+        }
+        return;
+      }
+
+      if (!gDetector) {
+        if (!cancelled) setModelStatus('Loading MoveNet Pose Model...');
+        try {
+          await initGlobalDetector(status => { if (!cancelled) setModelStatus(status); });
+        } catch (modelErr) {
+          if (!cancelled) {
+            setCamError('AI model failed to load. Please refresh the page.');
+            setModelStatus('');
+          }
+          return;
+        }
+      }
+      if (cancelled) return;
+      setModelStatus('');
+
+      prevTimeRef.current = performance.now();
+
+      const loop = async () => {
+        if (cancelled) return;
+        const video  = videoRef.current;
+        const canvas = canvasRef.current;
+
+        if (gDetector && canvas && video && video.readyState >= 2) {
+          const vw = video.videoWidth  || 640;
+          const vh = video.videoHeight || 480;
+          if (canvas.width !== vw || canvas.height !== vh) { canvas.width = vw; canvas.height = vh; }
+
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          try {
+            const poses = await gDetector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
+
+            if (poses.length > 0 && poses[0].keypoints) {
+              const kps = poses[0].keypoints;
+              const kMap = {};
+              kps.forEach(k => { if (k.score > 0.10) kMap[k.name] = k; });
+
+              let calculatedAngle = 0;
+              let isUserMoving = false;
+
+              if (exercise.id === 'head_rotation') {
+                if (kMap.nose && kMap.left_ear && kMap.right_ear) {
+                  const earDist = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
+                  const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
+                  const dx = Math.abs(kMap.nose.x - earCenter);
+                  calculatedAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
+                  isUserMoving = true;
+                }
+              } else if (exercise.id === 'arm_rotation') {
+                const lS = kMap.left_shoulder,  lE = kMap.left_elbow;
+                const rS = kMap.right_shoulder, rE = kMap.right_elbow;
+                if (lS && lE && rS && rE) {
+                  calculatedAngle = Math.max(calcArmAngle(lS, lE), calcArmAngle(rS, rE));
+                  isUserMoving = true;
+                } else if (lS && lE) {
+                  calculatedAngle = calcArmAngle(lS, lE);
+                  isUserMoving = true;
+                } else if (rS && rE) {
+                  calculatedAngle = calcArmAngle(rS, rE);
+                  isUserMoving = true;
+                }
+              } else {
+                const j = exercise.joints || [];
+                const p1 = kMap[j[0]], p2 = kMap[j[1]], p3 = kMap[j[2]];
+                if (p1 && p2 && p3) { calculatedAngle = calcAngle3P(p1, p2, p3); isUserMoving = true; }
+              }
+
+              const bone = (a, b, col = '#e2723b') => {
+                if (kMap[a] && kMap[b]) {
+                  ctx.strokeStyle = col; ctx.lineWidth = 3;
+                  ctx.beginPath(); ctx.moveTo(kMap[a].x, kMap[a].y);
+                  ctx.lineTo(kMap[b].x, kMap[b].y); ctx.stroke();
+                }
+              };
+
+              if (exercise.id === 'head_rotation') {
+                bone('nose','left_eye'); bone('left_eye','left_ear');
+                bone('nose','right_eye'); bone('right_eye','right_ear');
+                bone('left_shoulder','right_shoulder','rgba(255,255,255,0.35)');
+              } else if (exercise.id === 'arm_rotation') {
+                bone('left_shoulder','left_elbow'); bone('left_elbow','left_wrist');
+                bone('right_shoulder','right_elbow'); bone('right_elbow','right_wrist');
+                bone('left_shoulder','right_shoulder','rgba(255,255,255,0.35)');
+                ['left_shoulder','right_shoulder'].forEach(name => {
+                  const s = kMap[name];
+                  if (s) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                    ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+                    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y + 130); ctx.stroke();
+                    ctx.setLineDash([]);
+                  }
+                });
+              } else {
+                const j = exercise.joints || [];
+                bone(j[0], j[1]); bone(j[1], j[2]);
+              }
+
+              kps.forEach(k => {
+                if (k.score < 0.10) return;
+                const a = Math.min(1, k.score * 2);
+                ctx.fillStyle = `rgba(226,114,59,${a})`;
+                ctx.beginPath(); ctx.arc(k.x, k.y, 4 + a * 3, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 1.5; ctx.stroke();
+              });
+
+              smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
+              const activeAngle = smoothedAngleRef.current;
+
+              const now = performance.now();
+              const dt  = Math.max((now - prevTimeRef.current) / 1000, 0.001);
+              prevTimeRef.current = now;
+
+              const peakLimit = exercise.targetRange.min;
+              const restLimit = exercise.id === 'head_rotation' ? 20 : 30;
+
+              if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
+              if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
+
+              if (activeAngle > peakLimit && !isFlexingRef.current) {
+                isFlexingRef.current = true;
+                if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+                repStartTimeRef.current = now;
+              } else if (activeAngle < restLimit && isFlexingRef.current) {
+                isFlexingRef.current = false;
+                if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+                repStartTimeRef.current = now;
+                repCountRef.current += 1;
+                if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
+                currentRepPeakRef.current = 0;
+                playChime();
+              }
+
+              if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
+              const velocity = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
+              prevAngleRef.current = activeAngle;
+
+              const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
+              prevVelRef.current = velocity;
+
+              if (activeAngle > restLimit + 5) tutRef.current += dt;
+
+              const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
+              prevAccelRef.current = accel;
+              jerkAccumRef.current.push(jerkSample);
+              if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
+              const avgJerk   = jerkAccumRef.current.reduce((a, b) => a + b, 0) / (jerkAccumRef.current.length || 1);
+              const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
+
+              let symmetry = 100;
+              if (repPeaksRef.current.length >= 2) {
+                const peaks = repPeaksRef.current;
+                const mean  = peaks.reduce((a, b) => a + b, 0) / peaks.length;
+                const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
+                symmetry = mean > 0 ? Math.max(0, Math.round(100 - (Math.sqrt(variance) / mean) * 100)) : 100;
+              }
+
+              const tMin = exercise.targetRange.min, tMax = exercise.targetRange.max;
+              romUtilRef.current = (tMax - tMin) > 0
+                ? Math.min(100, Math.round(((peakAngleRef.current - minAngleRef.current) / (tMax - tMin)) * 100)) : 0;
+
+              let fatigue = 0;
+              if (repPeaksRef.current.length >= 4) {
+                const rp = repPeaksRef.current;
+                const h1 = rp.slice(0, Math.floor(rp.length / 2));
+                const h2 = rp.slice(Math.floor(rp.length / 2));
+                const a1 = h1.reduce((a, b) => a + b, 0) / h1.length;
+                const a2 = h2.reduce((a, b) => a + b, 0) / h2.length;
+                fatigue = a1 > 0 ? Math.max(0, Math.round(((a1 - a2) / a1) * 100)) : 0;
+              }
+
+              caloriesRef.current = Math.round(3.5 * 70 * (tutRef.current / 3600));
+
+              const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
+              historyRef.current.push(activeAngle);
+              if (historyRef.current.length > 600) historyRef.current.shift();
+              formScoreRef.current = historyRef.current.length > 0
+                ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
+
+              frameSkipRef.current++;
+              if (frameSkipRef.current % 3 === 0 && !cancelled) {
+                setUiAngle(activeAngle); setUiVel(velocity);
+                setUiReps(repCountRef.current); setUiPeak(peakAngleRef.current);
+                setUiForm(formScoreRef.current); setUiMoving(isUserMoving);
+                setUiFlexing(isFlexingRef.current); setUiAccel(accel);
+                setUiTUT(tutRef.current);
+                setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
+                setUiSymmetry(symmetry); setUiRomUtil(romUtilRef.current);
+                setUiFatigue(fatigue); setUiJerk(smoothness); setUiCalories(caloriesRef.current);
+              }
+            }
+          } catch (inferErr) {
+            console.error('Inference error:', inferErr);
+          }
+        }
+        if (!cancelled) rafId = requestAnimationFrame(loop);
+      };
+      rafId = requestAnimationFrame(loop);
+    }
+    run();
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      setCamActive(false);
+    };
+  }, [exercise.id]);
 
   const startSimulationMode = () => {
     setCamError('');
@@ -1423,475 +1618,10 @@ function TrackingScreen({ exercise, onFinish }) {
     isSimulatingRef.current = true;
   };
 
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    // Start camera and global model init in parallel
-    initCamera();
-    initGlobalDetector((status) => {
-      if (isMountedRef.current) setModelStatus(status);
-    }).then(() => {
-      detectorReadyRef.current = true;
-      if (isMountedRef.current) setModelStatus('');
-    }).catch((err) => {
-      if (isMountedRef.current) {
-        setCamError('AI model failed to load. Please refresh the page to retry.');
-        setModelStatus('');
-      }
-    });
-
-    return () => {
-      isMountedRef.current = false;
-      if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
-      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    };
-  }, [initCamera]);
-
-  /* ML Inference Loop */
-  const runDetection = useCallback(async () => {
-    if (!isMountedRef.current) return;
-
-    // ── Simulated Motion Loop (Fallback if webcam unavailable) ──
-    if (isSimulatingRef.current) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          canvas.width = canvas.clientWidth || 640;
-          canvas.height = canvas.clientHeight || 480;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-          const t = performance.now() / 1000;
-          const cycle = (Math.sin(t * 1.5) + 1) / 2; // 0 to 1
-          const simAngle = exercise.targetRange.min * 0.2 + cycle * (exercise.targetRange.max * 1.05);
-
-          // Draw simulated skeleton
-          const cx = canvas.width / 2;
-          const cy = canvas.height / 2;
-          const armLen = 110;
-          const rad = (simAngle * Math.PI) / 180;
-
-          const p1 = { x: cx - 40, y: cy - 40 };
-          const p2 = { x: cx, y: cy + 30 };
-          const p3 = { x: cx + armLen * Math.cos(rad), y: cy + 30 - armLen * Math.sin(rad) };
-
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
-          ctx.stroke();
-
-          [p1, p2, p3].forEach(pt => {
-            ctx.fillStyle = '#e2723b';
-            ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
-          });
-
-          // Kinematic update
-          smoothedAngleRef.current += (simAngle - smoothedAngleRef.current) * 0.25;
-          const activeAngle = smoothedAngleRef.current;
-
-          const now = performance.now();
-          const dt = (now - prevTimeRef.current) / 1000;
-          prevTimeRef.current = now;
-
-          const peakLimit = exercise.targetRange.min;
-          const restLimit = 25;
-
-          // Track current rep peak
-          if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
-          if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
-
-          // Phase transitions with tempo tracking
-          if (activeAngle > peakLimit && !isFlexingRef.current) {
-            isFlexingRef.current = true;
-            // Eccentric phase just ended, concentric starting
-            if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-            repStartTimeRef.current = now;
-          } else if (activeAngle < restLimit && isFlexingRef.current) {
-            isFlexingRef.current = false;
-            // Concentric phase just ended
-            if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-            repStartTimeRef.current = now;
-            repCountRef.current += 1;
-            // Store this rep's peak for symmetry
-            if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
-            currentRepPeakRef.current = 0;
-            playChime();
-          }
-
-          if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
-          const vel = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
-          prevAngleRef.current = activeAngle;
-
-          // ── Advanced Metrics Computation ──
-          // Angular acceleration (°/s²)
-          const accel = dt > 0.01 ? (vel - prevVelRef.current) / dt : 0;
-          prevVelRef.current = vel;
-
-          // Time under tension — increment when actively moving
-          if (activeAngle > restLimit + 5) tutRef.current += dt;
-
-          // Jerk (rate of acceleration change — smoothness metric)
-          const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
-          prevAccelRef.current = accel;
-          jerkAccumRef.current.push(jerkSample);
-          if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
-          const avgJerk = jerkAccumRef.current.length > 0
-            ? jerkAccumRef.current.reduce((a, b) => a + b, 0) / jerkAccumRef.current.length : 0;
-          // Smoothness: invert jerk to 0-100 scale (lower jerk = higher smoothness)
-          const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
-
-          // Symmetry score — std deviation of rep peaks
-          let symmetry = 100;
-          if (repPeaksRef.current.length >= 2) {
-            const peaks = repPeaksRef.current;
-            const mean = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-            const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
-            const stdDev = Math.sqrt(variance);
-            symmetry = mean > 0 ? Math.max(0, Math.round(100 - (stdDev / mean) * 100)) : 100;
-          }
-
-          // ROM Utilization — % of target range actually used
-          const tMin = exercise.targetRange.min;
-          const tMax = exercise.targetRange.max;
-          const usedRange = peakAngleRef.current - minAngleRef.current;
-          const targetRange = tMax - tMin;
-          romUtilRef.current = targetRange > 0 ? Math.min(100, Math.round((usedRange / targetRange) * 100)) : 0;
-
-          // Fatigue index — compare recent rep peaks to early ones
-          let fatigue = 0;
-          if (repPeaksRef.current.length >= 4) {
-            const rp = repPeaksRef.current;
-            const firstHalf = rp.slice(0, Math.floor(rp.length / 2));
-            const secondHalf = rp.slice(Math.floor(rp.length / 2));
-            const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-            const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-            fatigue = avgFirst > 0 ? Math.max(0, Math.round(((avgFirst - avgSecond) / avgFirst) * 100)) : 0;
-          }
-
-          // Calorie estimation — MET-based (light ROM exercise ~3.5 MET, 70kg default)
-          const metValue = 3.5;
-          const weightKg = 70;
-          const elapsedHrs = tutRef.current / 3600;
-          caloriesRef.current = Math.round(metValue * weightKg * elapsedHrs);
-
-          // Form score
-          const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
-
-          historyRef.current.push(activeAngle);
-          if (historyRef.current.length > 600) historyRef.current.shift();
-
-          formScoreRef.current = historyRef.current.length > 0 ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
-
-          frameSkipRef.current++;
-          if (frameSkipRef.current % 4 === 0 && isMountedRef.current) {
-            setUiAngle(activeAngle);
-            setUiVel(vel);
-            setUiReps(repCountRef.current);
-            setUiPeak(peakAngleRef.current);
-            setUiForm(formScoreRef.current);
-            setUiMoving(true);
-            setUiFlexing(isFlexingRef.current);
-            // Advanced metrics
-            setUiAccel(accel);
-            setUiTUT(tutRef.current);
-            setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
-            setUiSymmetry(symmetry);
-            setUiRomUtil(romUtilRef.current);
-            setUiFatigue(fatigue);
-            setUiJerk(smoothness);
-            setUiCalories(caloriesRef.current);
-          }
-        }
-      }
-      if (isMountedRef.current) animRef.current = requestAnimationFrame(runDetection);
-      return;
-    }
-
-    try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const detector = gDetector; // Use the global singleton — never null after first load
-
-      if (detector && canvas && video && video.readyState >= 2) {
-        const vw = video.videoWidth || 640;
-        const vh = video.videoHeight || 480;
-        if (canvas.width !== vw || canvas.height !== vh) { canvas.width = vw; canvas.height = vh; }
-
-        const ctx = canvas.getContext('2d');
-        const W = canvas.width;
-        const H = canvas.height;
-        ctx.clearRect(0, 0, W, H);
-
-        // Run inference
-        const poses = await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
-
-        let calculatedAngle = 0;
-        let isUserMoving = false;
-
-        if (poses.length > 0 && poses[0].keypoints) {
-          const kps = poses[0].keypoints;
-          // Low threshold (0.15) — captures partially-visible joints that are still reliable enough.
-          // A strict 0.3 rejects hip/wrist on upper-body shots, making arm tracking impossible.
-          const kMap = {};
-          kps.forEach(k => { if (k.score > 0.15) kMap[k.name] = k; });
-
-          // ── Kinematic Math ──
-          if (exercise.id === 'head_rotation') {
-            if (kMap.nose && kMap.left_ear && kMap.right_ear) {
-              const earDist = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
-              const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
-              const dx = Math.abs(kMap.nose.x - earCenter);
-              const rawAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
-              calculatedAngle = rawAngle;
-              isUserMoving = true;
-            }
-          } else if (exercise.id === 'arm_rotation') {
-            // ── ROBUST ARM ROTATION: shoulder → elbow vertical angle ──
-            // We deliberately DO NOT use the hip as an anchor — it's almost never
-            // reliably detected in a typical upper-body webcam shot (confidence < 0.15).
-            // Instead we measure the angle of the shoulder→elbow vector from the
-            // downward vertical. This only needs 2 keypoints.
-            //
-            // angle = 0°  when arm hangs straight down (resting)
-            // angle = 90° when arm is horizontal
-            // angle = 180° when arm is fully raised above head
-
-            const calcArmAngle = (shoulder, elbow) => {
-              const dx = elbow.x - shoulder.x;
-              const dy = elbow.y - shoulder.y; // positive = downward in image coords
-              // atan2(dy, dx) relative to straight-down vector (0, 1 in image coords)
-              // angle from downward vertical:
-              const angleRad = Math.atan2(dx, dy); // atan2(horizontal, vertical)
-              let angleDeg = Math.abs((angleRad * 180) / Math.PI); // 0 = hanging down, 90 = horizontal
-              // Remap so that raised arm gives a larger reading:
-              // 0° down → 0°, horizontal → 90°, fully raised → 180°
-              return Math.min(angleDeg, 175);
-            };
-
-            const lSho = kMap['left_shoulder'],  lElb = kMap['left_elbow'];
-            const rSho = kMap['right_shoulder'], rElb = kMap['right_elbow'];
-
-            const leftOk  = !!(lSho && lElb);
-            const rightOk = !!(rSho && rElb);
-
-            if (leftOk && rightOk) {
-              const leftConf  = (lSho.score + lElb.score) / 2;
-              const rightConf = (rSho.score + rElb.score) / 2;
-              const lAngle = calcArmAngle(lSho, lElb);
-              const rAngle = calcArmAngle(rSho, rElb);
-              // Pick the arm that is more raised (higher angle = user is doing the exercise)
-              // If both are similar, pick the one with better confidence
-              calculatedAngle = (lAngle >= rAngle) ? lAngle : rAngle;
-              isUserMoving = true;
-            } else if (leftOk) {
-              calculatedAngle = calcArmAngle(lSho, lElb);
-              isUserMoving = true;
-            } else if (rightOk) {
-              calculatedAngle = calcArmAngle(rSho, rElb);
-              isUserMoving = true;
-            }
-          } else {
-            // Generic 3-joint fallback for any future exercises with a joints array
-            const joints = exercise.joints || [];
-            const p1 = kMap[joints[0]];
-            const p2 = kMap[joints[1]];
-            const p3 = kMap[joints[2]];
-            if (p1 && p2 && p3) {
-              calculatedAngle = calcAngle3P(p1, p2, p3);
-              isUserMoving = true;
-            }
-          }
-
-          // Draw Skeleton Overlay
-          const drawBone = (nameA, nameB, color = '#e2723b') => {
-            if (kMap[nameA] && kMap[nameB]) {
-              ctx.strokeStyle = color;
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.moveTo(kMap[nameA].x, kMap[nameA].y);
-              ctx.lineTo(kMap[nameB].x, kMap[nameB].y);
-              ctx.stroke();
-            }
-          };
-          const drawBoneXY = (x1, y1, x2, y2, color = 'rgba(255,255,255,0.3)') => {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-            ctx.setLineDash([]);
-          };
-
-          if (exercise.id === 'head_rotation') {
-             drawBone('nose', 'left_eye'); drawBone('left_eye', 'left_ear');
-             drawBone('nose', 'right_eye'); drawBone('right_eye', 'right_ear');
-             drawBone('left_shoulder', 'right_shoulder', 'rgba(255,255,255,0.4)');
-          } else if (exercise.id === 'arm_rotation') {
-            // Always draw both arms with whatever keypoints exist
-            drawBone('left_shoulder',  'left_elbow');  drawBone('left_elbow',  'left_wrist');
-            drawBone('right_shoulder', 'right_elbow'); drawBone('right_elbow', 'right_wrist');
-            // Torso references
-            drawBone('left_shoulder',  'right_shoulder', 'rgba(255,255,255,0.35)');
-            drawBone('left_shoulder',  'left_hip',       'rgba(255,255,255,0.25)');
-            drawBone('right_shoulder', 'right_hip',      'rgba(255,255,255,0.25)');
-            drawBone('left_hip',       'right_hip',      'rgba(255,255,255,0.25)');
-            // Dashed vertical reference line from each visible shoulder downward
-            if (kMap['left_shoulder']) {
-              const s = kMap['left_shoulder'];
-              drawBoneXY(s.x, s.y, s.x, s.y + 120);
-            }
-            if (kMap['right_shoulder']) {
-              const s = kMap['right_shoulder'];
-              drawBoneXY(s.x, s.y, s.x, s.y + 120);
-            }
-          } else {
-             const joints = exercise.joints || [];
-             drawBone(joints[0], joints[1]);
-             drawBone(joints[1], joints[2]);
-          }
-
-          // Draw ALL keypoints above 0.15 — always show skeleton even if angle calc fails
-          kps.forEach(k => {
-            if (k.score < 0.15) return;
-            const alpha = Math.min(1, k.score * 2); // fade low-confidence ones
-            ctx.fillStyle = `rgba(226, 114, 59, ${alpha})`;
-            ctx.beginPath(); ctx.arc(k.x, k.y, 5 + alpha * 2, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; ctx.lineWidth = 1.5; ctx.stroke();
-          });
-        }
-
-        // Low-pass filter for smooth UI display
-        smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
-        const activeAngle = smoothedAngleRef.current;
-
-        // Rep counting logic
-        const now = performance.now();
-        const dt = (now - prevTimeRef.current) / 1000;
-        prevTimeRef.current = now;
-
-        const peakLimit = exercise.targetRange.min;
-        const restLimit = exercise.id === 'head_rotation' ? 20 : 35;
-
-        // Track current rep peak
-        if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
-        if (activeAngle < minAngleRef.current) minAngleRef.current = activeAngle;
-
-        // Phase transitions with tempo tracking
-        if (activeAngle > peakLimit && !isFlexingRef.current) {
-          isFlexingRef.current = true;
-          if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-          repStartTimeRef.current = now;
-        } else if (activeAngle < restLimit && isFlexingRef.current) {
-          isFlexingRef.current = false;
-          if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-          repStartTimeRef.current = now;
-          repCountRef.current += 1;
-          if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
-          currentRepPeakRef.current = 0;
-          playChime();
-        }
-
-        if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
-
-        let velocity = 0;
-        if (dt > 0.01) {
-          velocity = Math.abs(activeAngle - prevAngleRef.current) / dt;
-        }
-        prevAngleRef.current = activeAngle;
-
-        // ── Advanced Metrics Computation ──
-        const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
-        prevVelRef.current = velocity;
-
-        if (activeAngle > restLimit + 5) tutRef.current += dt;
-
-        const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
-        prevAccelRef.current = accel;
-        jerkAccumRef.current.push(jerkSample);
-        if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
-        const avgJerk = jerkAccumRef.current.length > 0
-          ? jerkAccumRef.current.reduce((a, b) => a + b, 0) / jerkAccumRef.current.length : 0;
-        const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
-
-        let symmetry = 100;
-        if (repPeaksRef.current.length >= 2) {
-          const peaks = repPeaksRef.current;
-          const mean = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-          const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
-          const stdDev = Math.sqrt(variance);
-          symmetry = mean > 0 ? Math.max(0, Math.round(100 - (stdDev / mean) * 100)) : 100;
-        }
-
-        const tMin = exercise.targetRange.min;
-        const tMax = exercise.targetRange.max;
-        const usedRange = peakAngleRef.current - minAngleRef.current;
-        const targetRange = tMax - tMin;
-        romUtilRef.current = targetRange > 0 ? Math.min(100, Math.round((usedRange / targetRange) * 100)) : 0;
-
-        let fatigue = 0;
-        if (repPeaksRef.current.length >= 4) {
-          const rp = repPeaksRef.current;
-          const firstHalf = rp.slice(0, Math.floor(rp.length / 2));
-          const secondHalf = rp.slice(Math.floor(rp.length / 2));
-          const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-          const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-          fatigue = avgFirst > 0 ? Math.max(0, Math.round(((avgFirst - avgSecond) / avgFirst) * 100)) : 0;
-        }
-
-        const metValue = 3.5;
-        const weightKg = 70;
-        const elapsedHrs = tutRef.current / 3600;
-        caloriesRef.current = Math.round(metValue * weightKg * elapsedHrs);
-
-        const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
-
-        // Store for analysis
-        historyRef.current.push(activeAngle);
-        if (historyRef.current.length > 600) historyRef.current.shift();
-
-        formScoreRef.current = historyRef.current.length > 0 ? Math.round((goodSamp / historyRef.current.length) * 100) : 100;
-
-        // UI Throttle Update
-        frameSkipRef.current++;
-        if (frameSkipRef.current % 4 === 0 && isMountedRef.current) {
-          setUiAngle(activeAngle);
-          setUiVel(velocity);
-          setUiReps(repCountRef.current);
-          setUiPeak(peakAngleRef.current);
-          setUiForm(formScoreRef.current);
-          setUiMoving(isUserMoving);
-          setUiFlexing(isFlexingRef.current);
-          // Advanced metrics
-          setUiAccel(accel);
-          setUiTUT(tutRef.current);
-          setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
-          setUiSymmetry(symmetry);
-          setUiRomUtil(romUtilRef.current);
-          setUiFatigue(fatigue);
-          setUiJerk(smoothness);
-          setUiCalories(caloriesRef.current);
-        }
-      }
-    } catch (e) {
-       console.error("Inference Error:", e);
-    }
-    
-    // Non-blocking async loop
-    if (isMountedRef.current) animRef.current = requestAnimationFrame(runDetection);
-  }, [exercise]);
-
-  useEffect(() => {
-    // Start loop when model and camera (or simulator) are ready
-    if ((camActive || isSimulatingRef.current) && !modelStatus && !animRef.current) {
-      prevTimeRef.current = performance.now();
-      animRef.current = requestAnimationFrame(runDetection);
-    }
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [camActive, modelStatus, runDetection]);
 
   const handleFinish = () => {
-    if (animRef.current) cancelAnimationFrame(animRef.current);
+    // The useEffect cleanup handles RAF cancellation and stream stop.
+    // We call onFinish with the session data immediately.
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     const hist = [...historyRef.current];
     onFinish({
@@ -1932,7 +1662,7 @@ function TrackingScreen({ exercise, onFinish }) {
               <p className="text-white/80 text-xs font-semibold max-w-[220px] leading-relaxed">{camError}</p>
               <div className="flex gap-2 mt-1">
                 <button
-                  onClick={() => { setCamError(''); initCamera(); }}
+                  onClick={() => window.location.reload()}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#e2723b]/80 text-white text-xs font-bold hover:bg-[#e2723b] transition-colors"
                 >
                   <RefreshCw className="w-3 h-3" /> Retry
