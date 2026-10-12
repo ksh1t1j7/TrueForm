@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import SplashCursor from './SplashCursor';
+import FoodScanner from './FoodScanner';
 
 // TensorFlow.js from Global Scope (loaded via CDN in index.html)
 // NOTE: Read dynamically inside functions to avoid race conditions with CDN load timing.
@@ -1533,12 +1534,15 @@ function TrackingScreen({ exercise, onFinish }) {
                 isUserMoving = true;
               }
             } else if (exercise.id === 'arm_rotation') {
-              const lS = kMap.left_shoulder,  lE = kMap.left_elbow;
+              const lS = kMap.left_shoulder, lE = kMap.left_elbow;
               const rS = kMap.right_shoulder, rE = kMap.right_elbow;
-              const lA = (lS && lE) ? armAngle(lS, lE) : 0;
-              const rA = (rS && rE) ? armAngle(rS, rE) : 0;
-              if (lS || rS) {                  // at least one shoulder visible
-                calculatedAngle = Math.max(lA, rA);
+              // Require BOTH shoulder+elbow to compute a meaningful angle
+              const lPair = lS && lE;
+              const rPair = rS && rE;
+              const lA = lPair ? armAngle(lS, lE) : -1;
+              const rA = rPair ? armAngle(rS, rE) : -1;
+              if (lPair || rPair) {
+                calculatedAngle = Math.max(lA < 0 ? 0 : lA, rA < 0 ? 0 : rA);
                 isUserMoving = true;
               }
             } else {
@@ -2002,6 +2006,9 @@ function AnalysisScreen({ data, onRetry, onHome }) {
 
 /* ─── SCREEN 5: Predictive Nutritional Intelligence Hub ────── */
 function PredictiveNutritionHub() {
+  // Tab control
+  const [nutritionTab, setNutritionTab] = useState('biomarker'); // 'biomarker' | 'food'
+
   // Input Biomarker State
   const [fastingGlucose, setFastingGlucose] = useState('95');
   const [triglycerides, setTriglycerides] = useState('125');
@@ -2209,7 +2216,37 @@ function PredictiveNutritionHub() {
 
   return (
     <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 pt-20 pb-4 md:pb-6 overflow-y-auto max-w-7xl mx-auto w-full select-none">
-      
+
+      {/* ── Tab Switcher ── */}
+      <div className="flex gap-2 bg-[#111316]/80 border border-white/8 rounded-2xl p-1.5 backdrop-blur-xl self-start">
+        <button
+          onClick={() => setNutritionTab('biomarker')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            nutritionTab === 'biomarker'
+              ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25'
+              : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <Brain className="w-3.5 h-3.5" /> Biomarker Analysis
+        </button>
+        <button
+          onClick={() => setNutritionTab('food')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            nutritionTab === 'food'
+              ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25'
+              : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <Camera className="w-3.5 h-3.5" /> Food Scanner
+        </button>
+      </div>
+
+      {/* ── Food Scanner Tab ── */}
+      {nutritionTab === 'food' && <FoodScanner />}
+
+      {/* ── Biomarker Tab ── */}
+      {nutritionTab === 'biomarker' && <>
+
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#111316]/90 border border-white/8 rounded-3xl p-6 backdrop-blur-xl">
         <div>
@@ -2582,6 +2619,8 @@ function PredictiveNutritionHub() {
         )}
 
       </div>
+      </>}
+
     </div>
   );
 }
