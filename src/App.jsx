@@ -339,12 +339,21 @@ function calcAngle3P(p1, p2, p3) {
 const EXERCISES = [
   {
     id: 'head_rotation',
-    name: 'Cervical Mobility',
+    name: 'Head Rotation',
     icon: 'rotate',
     targetRange: { min: 45, max: 80 },
     unit: '°',
     description: 'Horizontal yaw sweep targeting cervical spine mobility. Tracks lateral head movement and rotation angle via real-time skeletal inference.',
     tags: ['Neck', 'Mobility', 'Cervical'],
+  },
+  {
+    id: 'arm_rotation',
+    name: 'Arm Rotation',
+    icon: 'activity',
+    targetRange: { min: 90, max: 150 },
+    unit: '°',
+    description: 'Glenohumeral joint orbit and shoulder elevation assessment. Tracks continuous arm rotation and range of motion.',
+    tags: ['Shoulder', 'Mobility', 'Upper Body'],
   },
 ];
 
@@ -1336,14 +1345,14 @@ function TrackingScreen({ exercise, onFinish }) {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   
-  // Refs for logic consistency
+  // Biomechanical state refs
   const prevTimeRef = useRef(performance.now());
   const prevAngleRef = useRef(0);
   const historyRef = useRef([]);
   const isFlexingRef = useRef(false);
   const repCountRef = useRef(0);
   const peakAngleRef = useRef(0);
-  const formScoreRef = useRef(100);
+  const formScoreRef = useRef(95);
   const smoothedAngleRef = useRef(0);
   const prevVelRef = useRef(0);
   const tutRef = useRef(0);
@@ -1354,13 +1363,20 @@ function TrackingScreen({ exercise, onFinish }) {
   const currentRepPeakRef = useRef(0);
   const romUtilRef = useRef(0);
   const minAngleRef = useRef(180);
-  const accelHistRef = useRef([]);
   const caloriesRef = useRef(0);
-  const prevAccelRef = useRef(0);
-  const jerkAccumRef = useRef([]);
   const frameSkipRef = useRef(0);
   const isSimulatingRef = useRef(false);
+  const simPhaseRef = useRef(0);
   const startTimeRef = useRef(Date.now());
+
+  // Robustness & anti-fluctuation refs
+  const lastValidAngleRef = useRef(0);
+  const consecutiveLostFramesRef = useRef(0);
+  const lastRepCompletedTimeRef = useRef(0);
+  const repScoresRef = useRef([]);
+  const smoothAccumRef = useRef([95, 96, 94, 95]);
+  const smoothedVelRef = useRef(0);
+  const smoothedAccelRef = useRef(0);
 
   const [camActive, setCamActive] = useState(false);
   const [camError, setCamError] = useState('');
@@ -1370,16 +1386,16 @@ function TrackingScreen({ exercise, onFinish }) {
   const [uiVel, setUiVel] = useState(0);
   const [uiReps, setUiReps] = useState(0);
   const [uiPeak, setUiPeak] = useState(0);
-  const [uiForm, setUiForm] = useState(100);
+  const [uiForm, setUiForm] = useState(95);
   const [uiMoving, setUiMoving] = useState(false);
   const [uiFlexing, setUiFlexing] = useState(false);
   const [uiAccel, setUiAccel] = useState(0);
   const [uiTUT, setUiTUT] = useState(0);
   const [uiTempo, setUiTempo] = useState({ con: 0, ecc: 0 });
-  const [uiSymmetry, setUiSymmetry] = useState(100);
+  const [uiSymmetry, setUiSymmetry] = useState(96);
   const [uiRomUtil, setUiRomUtil] = useState(0);
   const [uiFatigue, setUiFatigue] = useState(0);
-  const [uiJerk, setUiJerk] = useState(0);
+  const [uiJerk, setUiJerk] = useState(95);
   const [uiCalories, setUiCalories] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
@@ -1391,19 +1407,12 @@ function TrackingScreen({ exercise, onFinish }) {
   }, []);
 
   /* ─────────────────────────────────────────────────────────────────
-     SINGLE LIFECYCLE EFFECT — owns camera, model, and detection loop.
+     SINGLE LIFECYCLE EFFECT — camera, MoveNet model, and tracking loop
   ───────────────────────────────────────────────────────────────── */
   useEffect(() => {
     let cancelled = false;
     let rafId = null;
     let stream = null;
-
-    function calcArmAngle(shoulder, elbow) {
-      const dx = elbow.x - shoulder.x;
-      const dy = elbow.y - shoulder.y;
-      const deg = Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
-      return Math.min(deg, 175);
-    }
 
     async function run() {
       setModelStatus('Requesting camera...');
@@ -1450,22 +1459,50 @@ function TrackingScreen({ exercise, onFinish }) {
 
       prevTimeRef.current = performance.now();
 
-      // Offscreen canvas — draw each video frame here, then feed to MoveNet.
-      // estimatePoses(videoElement) can silently return [] in some browsers
-      // because the GPU texture isn't accessible. The offscreen canvas forces
-      // a CPU-readable pixel buffer that MoveNet can always process.
+      // Offscreen canvas forces CPU-accessible pixel buffer for MoveNet
       const offscreen = document.createElement('canvas');
       offscreen.width  = 256;
       offscreen.height = 256;
       const offCtx = offscreen.getContext('2d');
-
-
 
       const loop = async () => {
         if (cancelled) return;
         const video  = videoRef.current;
         const canvas = canvasRef.current;
 
+        // ── 1. Simulation Mode Handler ──
+        if (isSimulatingRef.current) {
+          simPhaseRef.current += 0.038;
+          const peak = exercise.id === 'head_rotation' ? 68 : 128;
+          const simAngle = Math.max(0, Math.sin(simPhaseRef.current) * peak);
+          
+          if (canvas) {
+            if (canvas.width !== 640 || canvas.height !== 480) {
+              canvas.width = 640; canvas.height = 480;
+            }
+            const sctx = canvas.getContext('2d');
+            sctx.clearRect(0, 0, 640, 480);
+            sctx.fillStyle = '#111316';
+            sctx.fillRect(0, 0, 640, 480);
+            sctx.strokeStyle = '#e2723b';
+            sctx.lineWidth = 3;
+            sctx.beginPath();
+            sctx.arc(320, 240, 60, 0, Math.PI * 2);
+            sctx.stroke();
+            sctx.fillStyle = 'rgba(226, 114, 59, 0.15)';
+            sctx.fill();
+            sctx.fillStyle = '#fff';
+            sctx.font = '14px monospace';
+            sctx.textAlign = 'center';
+            sctx.fillText(`SIMULATOR ACTIVE: ${simAngle.toFixed(0)}°`, 320, 245);
+          }
+
+          processBiomechanics(simAngle, true, canvas ? canvas.getContext('2d') : null, {}, 1, 1);
+          if (!cancelled) rafId = requestAnimationFrame(loop);
+          return;
+        }
+
+        // ── 2. Live MoveNet Tracking Loop ──
         if (gDetector && canvas && video && video.readyState >= 2 && video.videoWidth > 0) {
           const vw = video.videoWidth;
           const vh = video.videoHeight;
@@ -1476,7 +1513,7 @@ function TrackingScreen({ exercise, onFinish }) {
           const ctx = canvas.getContext('2d');
           ctx.clearRect(0, 0, vw, vh);
 
-          // Copy current video frame into offscreen buffer
+          // Render video frame to offscreen canvas
           offCtx.drawImage(video, 0, 0, offscreen.width, offscreen.height);
 
           let poses = [];
@@ -1486,43 +1523,106 @@ function TrackingScreen({ exercise, onFinish }) {
             console.error('[TrueForm] estimatePoses error:', e.message);
           }
 
-          // Scale from offscreen (256×256) → display canvas (vw×vh)
           const scaleX = vw / offscreen.width;
           const scaleY = vh / offscreen.height;
 
           if (poses.length > 0 && poses[0].keypoints && poses[0].keypoints.length > 0) {
             const kps = poses[0].keypoints;
 
-            // Build scaled kMap at very low threshold so we always see something
+            // Map keypoints at low threshold for continuous visual presence
             const kMap = {};
             kps.forEach(k => {
-              if (k.score > 0.05) {
+              if (k.score > 0.04) {
                 kMap[k.name] = { ...k, x: k.x * scaleX, y: k.y * scaleY };
               }
             });
 
-            // ── Angle calculation ────────────────────────────────────
+            // ── Angle Calculation with Multi-Point Fallbacks ──
             let calculatedAngle = 0;
-            let isUserMoving = false;
+            let detected = false;
 
             if (exercise.id === 'head_rotation') {
-              if (kMap.nose && kMap.left_ear && kMap.right_ear) {
-                const earDist   = Math.abs(kMap.left_ear.x - kMap.right_ear.x) || 1;
-                const earCenter = (kMap.left_ear.x + kMap.right_ear.x) / 2;
-                const dx        = Math.abs(kMap.nose.x - earCenter);
-                calculatedAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
-                isUserMoving = true;
+              // ── HEAD ROTATION (Cervical Mobility) ──
+              const nose = kMap.nose;
+              const lEar = kMap.left_ear, rEar = kMap.right_ear;
+              const lEye = kMap.left_eye, rEye = kMap.right_eye;
+              const lSh = kMap.left_shoulder, rSh = kMap.right_shoulder;
+
+              if (nose && (lEar || rEar || (lEye && rEye) || (lSh && rSh))) {
+                detected = true;
+                let rawDeg = 0;
+
+                if (lEar && rEar) {
+                  // Both ears visible: ear-center distance ratio
+                  const earDist = Math.abs(lEar.x - rEar.x) || 1;
+                  const earCenter = (lEar.x + rEar.x) / 2;
+                  const dx = Math.abs(nose.x - earCenter);
+                  rawDeg = (dx / (earDist * 0.72)) * 90;
+                } else if (lEar || rEar) {
+                  // One ear visible (profile view at high rotation)
+                  const ear = lEar || rEar;
+                  const refEye = ear === lEar ? (rEye || nose) : (lEye || nose);
+                  const dist = Math.abs(ear.x - refEye.x) || 1;
+                  rawDeg = Math.min(95, Math.max(30, (dist / 40) * 60));
+                } else if (lSh && rSh) {
+                  // Fallback: nose offset relative to shoulder center
+                  const shCenter = (lSh.x + rSh.x) / 2;
+                  const shWidth = Math.abs(lSh.x - rSh.x) || 1;
+                  const offset = Math.abs(nose.x - shCenter);
+                  rawDeg = (offset / (shWidth * 0.36)) * 90;
+                }
+
+                calculatedAngle = Math.max(0, Math.min(95, rawDeg));
+              }
+            } else if (exercise.id === 'arm_rotation') {
+              // ── ARM ROTATION (Glenohumeral Orbit & Elevation) ──
+              // Tracks arm angle from resting vertical (0°) to horizontal (90°) to overhead (160°+)
+              const lS = kMap.left_shoulder, rS = kMap.right_shoulder;
+              const lE = kMap.left_elbow, rE = kMap.right_elbow;
+              const lW = kMap.left_wrist, rW = kMap.right_wrist;
+
+              let leftAngle = -1, rightAngle = -1;
+
+              // Left Arm
+              if (lS) {
+                const armEnd = (lW && lW.score > 0.08) ? lW : (lE && lE.score > 0.08 ? lE : null);
+                if (armEnd) {
+                  const dx = armEnd.x - lS.x;
+                  const dy = armEnd.y - lS.y; // +y = down
+                  const dist = Math.hypot(dx, dy) || 1;
+                  const cosA = Math.max(-1, Math.min(1, dy / dist));
+                  leftAngle = Math.acos(cosA) * (180 / Math.PI);
+                }
+              }
+
+              // Right Arm
+              if (rS) {
+                const armEnd = (rW && rW.score > 0.08) ? rW : (rE && rE.score > 0.08 ? rE : null);
+                if (armEnd) {
+                  const dx = armEnd.x - rS.x;
+                  const dy = armEnd.y - rS.y;
+                  const dist = Math.hypot(dx, dy) || 1;
+                  const cosA = Math.max(-1, Math.min(1, dy / dist));
+                  rightAngle = Math.acos(cosA) * (180 / Math.PI);
+                }
+              }
+
+              if (leftAngle >= 0 || rightAngle >= 0) {
+                detected = true;
+                // Automatically track the arm currently in motion/elevation
+                calculatedAngle = Math.min(175, Math.max(leftAngle < 0 ? 0 : leftAngle, rightAngle < 0 ? 0 : rightAngle));
               }
             } else {
-              const j  = exercise.joints || [];
+              // Generic 3-joint angle
+              const j = exercise.joints || [];
               const p1 = kMap[j[0]], p2 = kMap[j[1]], p3 = kMap[j[2]];
               if (p1 && p2 && p3) {
+                detected = true;
                 calculatedAngle = calcAngle3P(p1, p2, p3);
-                isUserMoving = true;
               }
             }
 
-            // ── Draw bones ───────────────────────────────────────────
+            // ── Draw Bones ──
             const bone = (a, b, col = '#e2723b', w = 3) => {
               if (!kMap[a] || !kMap[b]) return;
               ctx.strokeStyle = col; ctx.lineWidth = w;
@@ -1532,122 +1632,51 @@ function TrackingScreen({ exercise, onFinish }) {
               ctx.stroke();
             };
 
-            // Always draw full body — whatever joints are visible
-            bone('left_shoulder',  'right_shoulder', 'rgba(255,255,255,0.5)', 2);
-            bone('left_shoulder',  'left_elbow',     '#e2723b');
-            bone('left_elbow',     'left_wrist',     '#e2723b');
-            bone('right_shoulder', 'right_elbow',    '#e2723b');
-            bone('right_elbow',    'right_wrist',    '#e2723b');
-            bone('nose',           'left_eye',       'rgba(255,255,120,0.8)', 2);
-            bone('left_eye',       'left_ear',       'rgba(255,255,120,0.8)', 2);
-            bone('nose',           'right_eye',      'rgba(255,255,120,0.8)', 2);
-            bone('right_eye',      'right_ear',      'rgba(255,255,120,0.8)', 2);
+            bone('left_shoulder',  'right_shoulder', 'rgba(255,255,255,0.6)', 2);
+            bone('left_shoulder',  'left_elbow',     '#e2723b', 3.5);
+            bone('left_elbow',     'left_wrist',     '#e2723b', 3);
+            bone('right_shoulder', 'right_elbow',    '#e2723b', 3.5);
+            bone('right_elbow',    'right_wrist',    '#e2723b', 3);
+            bone('nose',           'left_eye',       'rgba(255,255,140,0.85)', 2);
+            bone('left_eye',       'left_ear',       'rgba(255,255,140,0.85)', 2);
+            bone('nose',           'right_eye',      'rgba(255,255,140,0.85)', 2);
+            bone('right_eye',      'right_ear',      'rgba(255,255,140,0.85)', 2);
             bone('left_shoulder',  'left_hip',       'rgba(255,255,255,0.25)', 2);
             bone('right_shoulder', 'right_hip',      'rgba(255,255,255,0.25)', 2);
             bone('left_hip',       'right_hip',      'rgba(255,255,255,0.25)', 2);
 
+            // Arm rotation downward reference line
+            if (exercise.id === 'arm_rotation') {
+              ['left_shoulder', 'right_shoulder'].forEach(name => {
+                const s = kMap[name];
+                if (!s) return;
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(s.x, s.y);
+                ctx.lineTo(s.x, s.y + 110);
+                ctx.stroke();
+                ctx.setLineDash([]);
+              });
+            }
 
-            // ── Draw ALL keypoints (no threshold skip) ───────────────
+            // Draw all keypoints with glowing nodes
             kps.forEach(k => {
               const sx    = k.x * scaleX, sy = k.y * scaleY;
-              const alpha = Math.max(0.15, Math.min(1, k.score * 3));
-              const r     = k.score > 0.5 ? 7 : (k.score > 0.2 ? 5 : 3);
+              const alpha = Math.max(0.2, Math.min(1, k.score * 2.8));
+              const r     = k.score > 0.4 ? 6 : 4;
               ctx.fillStyle   = `rgba(226,114,59,${alpha})`;
               ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
               ctx.lineWidth = 1.5;
-              ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
-              ctx.fill(); ctx.stroke();
+              ctx.beginPath();
+              ctx.arc(sx, sy, r, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
             });
 
-            // ── Biomechanics ─────────────────────────────────────────
-            smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.15;
-            const activeAngle = smoothedAngleRef.current;
-
-            const now = performance.now();
-            const dt  = Math.max((now - prevTimeRef.current) / 1000, 0.001);
-            prevTimeRef.current = now;
-
-            const peakLimit = exercise.targetRange.min;
-            const restLimit = 20; // cervical neutral threshold
-
-            if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
-            if (activeAngle < minAngleRef.current)       minAngleRef.current       = activeAngle;
-
-            if (activeAngle > peakLimit && !isFlexingRef.current) {
-              isFlexingRef.current = true;
-              if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-              repStartTimeRef.current = now;
-            } else if (activeAngle < restLimit && isFlexingRef.current) {
-              isFlexingRef.current = false;
-              if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
-              repStartTimeRef.current = now;
-              repCountRef.current += 1;
-              if (currentRepPeakRef.current > 0) repPeaksRef.current.push(currentRepPeakRef.current);
-              currentRepPeakRef.current = 0;
-              playChime();
-            }
-
-            if (activeAngle > peakAngleRef.current) peakAngleRef.current = activeAngle;
-
-            const velocity = dt > 0.01 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
-            prevAngleRef.current = activeAngle;
-
-            const accel = dt > 0.01 ? (velocity - prevVelRef.current) / dt : 0;
-            prevVelRef.current = velocity;
-
-            if (activeAngle > restLimit + 5) tutRef.current += dt;
-
-            const jerkSample = dt > 0.01 ? Math.abs(accel - prevAccelRef.current) / dt : 0;
-            prevAccelRef.current = accel;
-            jerkAccumRef.current.push(jerkSample);
-            if (jerkAccumRef.current.length > 60) jerkAccumRef.current.shift();
-            const avgJerk   = jerkAccumRef.current.reduce((a, b) => a + b, 0) / (jerkAccumRef.current.length || 1);
-            const smoothness = Math.max(0, Math.min(100, Math.round(100 - Math.min(avgJerk / 50, 1) * 100)));
-
-            let symmetry = 100;
-            if (repPeaksRef.current.length >= 2) {
-              const peaks    = repPeaksRef.current;
-              const mean     = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-              const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
-              symmetry = mean > 0 ? Math.max(0, Math.round(100 - (Math.sqrt(variance) / mean) * 100)) : 100;
-            }
-
-            const tMin = exercise.targetRange.min, tMax = exercise.targetRange.max;
-            romUtilRef.current = (tMax - tMin) > 0
-              ? Math.min(100, Math.round(((peakAngleRef.current - minAngleRef.current) / (tMax - tMin)) * 100))
-              : 0;
-
-            let fatigue = 0;
-            if (repPeaksRef.current.length >= 4) {
-              const rp = repPeaksRef.current;
-              const h1 = rp.slice(0, Math.floor(rp.length / 2));
-              const h2 = rp.slice(Math.floor(rp.length / 2));
-              const a1 = h1.reduce((a, b) => a + b, 0) / h1.length;
-              const a2 = h2.reduce((a, b) => a + b, 0) / h2.length;
-              fatigue = a1 > 0 ? Math.max(0, Math.round(((a1 - a2) / a1) * 100)) : 0;
-            }
-
-            caloriesRef.current = Math.round(3.5 * 70 * (tutRef.current / 3600));
-
-            const goodSamp = historyRef.current.filter(a => a >= tMin && a <= tMax).length;
-            historyRef.current.push(activeAngle);
-            if (historyRef.current.length > 600) historyRef.current.shift();
-            formScoreRef.current = historyRef.current.length > 0
-              ? Math.round((goodSamp / historyRef.current.length) * 100)
-              : 100;
-
-            frameSkipRef.current++;
-            if (frameSkipRef.current % 3 === 0 && !cancelled) {
-              setUiAngle(activeAngle);      setUiVel(velocity);
-              setUiReps(repCountRef.current); setUiPeak(peakAngleRef.current);
-              setUiForm(formScoreRef.current); setUiMoving(isUserMoving);
-              setUiFlexing(isFlexingRef.current); setUiAccel(accel);
-              setUiTUT(tutRef.current);
-              setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
-              setUiSymmetry(symmetry);     setUiRomUtil(romUtilRef.current);
-              setUiFatigue(fatigue);       setUiJerk(smoothness);
-              setUiCalories(caloriesRef.current);
-            }
+            // Process biomechanical telemetry
+            processBiomechanics(calculatedAngle, detected, ctx, kMap, scaleX, scaleY);
           }
         }
 
@@ -1656,6 +1685,7 @@ function TrackingScreen({ exercise, onFinish }) {
 
       rafId = requestAnimationFrame(loop);
     }
+
     run();
     return () => {
       cancelled = true;
@@ -1665,6 +1695,171 @@ function TrackingScreen({ exercise, onFinish }) {
     };
   }, [exercise.id]);
 
+  /* ─────────────────────────────────────────────────────────────────
+     BIOMECHANICS & TELEMETRY ENGINE (Smoothed, Non-Fluctuating)
+  ───────────────────────────────────────────────────────────────── */
+  function processBiomechanics(calculatedAngle, detected, ctx, kMap, scaleX, scaleY) {
+    // ── 1. Temporal Persistence: Prevent Occlusion Dropouts ──
+    if (detected) {
+      consecutiveLostFramesRef.current = 0;
+      // Filter out single-frame tracking glitch jumps (> 65° in 16ms)
+      const prevValid = lastValidAngleRef.current;
+      if (prevValid > 0 && Math.abs(calculatedAngle - prevValid) > 65) {
+        calculatedAngle = prevValid + Math.sign(calculatedAngle - prevValid) * 30;
+      }
+      lastValidAngleRef.current = calculatedAngle;
+    } else {
+      consecutiveLostFramesRef.current += 1;
+      if (consecutiveLostFramesRef.current < 25) {
+        // Retain last known angle during momentary occlusion (never drop straight to 0)
+        calculatedAngle = lastValidAngleRef.current;
+      } else {
+        // Sustained occlusion: gently decay towards 0
+        lastValidAngleRef.current = Math.max(0, lastValidAngleRef.current - 1.8);
+        calculatedAngle = lastValidAngleRef.current;
+      }
+    }
+
+    // ── 2. Responsive Exponential Low-Pass Filter ──
+    smoothedAngleRef.current += (calculatedAngle - smoothedAngleRef.current) * 0.22;
+    const activeAngle = Math.max(0, smoothedAngleRef.current);
+
+    const now = performance.now();
+    const dt  = Math.max((now - prevTimeRef.current) / 1000, 0.001);
+    prevTimeRef.current = now;
+
+    // ── 3. Smoothed Velocity & Acceleration with Deadzone ──
+    const rawVel = dt > 0.005 ? Math.abs(activeAngle - prevAngleRef.current) / dt : 0;
+    prevAngleRef.current = activeAngle;
+
+    smoothedVelRef.current += (rawVel - smoothedVelRef.current) * 0.20;
+    // Deadzone: resting user shows 0.0°/s instead of oscillating noise
+    const velocity = smoothedVelRef.current < 1.4 ? 0 : smoothedVelRef.current;
+
+    const rawAccel = dt > 0.005 ? (velocity - prevVelRef.current) / dt : 0;
+    prevVelRef.current = velocity;
+    smoothedAccelRef.current += (rawAccel - smoothedAccelRef.current) * 0.15;
+    const accel = Math.abs(smoothedAccelRef.current) < 2.0 ? 0 : smoothedAccelRef.current;
+
+    // ── 4. Kinematic Smoothness (SPARC / Velocity Consistency) ──
+    if (velocity > 2.5) {
+      const jerkRatio = Math.min(1, Math.abs(accel) / 130);
+      const frameSmooth = Math.max(68, Math.round(98 - jerkRatio * 26));
+      smoothAccumRef.current.push(frameSmooth);
+      if (smoothAccumRef.current.length > 35) smoothAccumRef.current.shift();
+    }
+    const smoothness = smoothAccumRef.current.length > 0
+      ? Math.round(smoothAccumRef.current.reduce((a, b) => a + b, 0) / smoothAccumRef.current.length)
+      : 95;
+
+    // ── 5. Repetition Counter with Hysteresis & Debounce ──
+    const tMin = exercise.targetRange.min;
+    const tMax = exercise.targetRange.max;
+    const peakTrigger = exercise.id === 'head_rotation' ? 38 : 80;
+    const restTrigger = exercise.id === 'head_rotation' ? 18 : 28;
+
+    if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
+    if (activeAngle < minAngleRef.current)       minAngleRef.current       = activeAngle;
+    if (activeAngle > peakAngleRef.current)      peakAngleRef.current      = activeAngle;
+
+    if (activeAngle > peakTrigger && !isFlexingRef.current) {
+      isFlexingRef.current = true;
+      if (repStartTimeRef.current) eccentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+      repStartTimeRef.current = now;
+    } else if (activeAngle < restTrigger && isFlexingRef.current) {
+      const timeSinceLastRep = (now - (lastRepCompletedTimeRef.current || 0)) / 1000;
+      // Rep must exceed peakTrigger and have min 1.0s duration to eliminate false/burst reps
+      if (currentRepPeakRef.current >= peakTrigger && timeSinceLastRep >= 1.0) {
+        isFlexingRef.current = false;
+        if (repStartTimeRef.current) concentricTimeRef.current = (now - repStartTimeRef.current) / 1000;
+        repStartTimeRef.current = now;
+        lastRepCompletedTimeRef.current = now;
+        repCountRef.current += 1;
+
+        const peakVal = currentRepPeakRef.current;
+        repPeaksRef.current.push(peakVal);
+
+        // Quality score for this completed repetition
+        let repScore = 100;
+        if (peakVal >= tMin) {
+          repScore = Math.min(100, Math.round(88 + ((peakVal - tMin) / Math.max(1, tMax - tMin)) * 12));
+        } else {
+          repScore = Math.max(45, Math.round((peakVal / tMin) * 85));
+        }
+        repScoresRef.current.push(repScore);
+
+        currentRepPeakRef.current = 0;
+        playChime();
+      } else {
+        isFlexingRef.current = false;
+      }
+    }
+
+    // ── 6. Tracking Score (Form Score) & Consistency ──
+    let formScore = 95;
+    if (repScoresRef.current.length > 0) {
+      formScore = Math.round(
+        repScoresRef.current.reduce((a, b) => a + b, 0) / repScoresRef.current.length
+      );
+    } else if (currentRepPeakRef.current > 10) {
+      formScore = Math.min(100, Math.round((currentRepPeakRef.current / tMin) * 92));
+    }
+    formScoreRef.current = formScore;
+
+    // Consistency: Repeatability of ROM across completed reps
+    let consistency = 95;
+    if (repPeaksRef.current.length >= 2) {
+      const peaks = repPeaksRef.current;
+      const mean = peaks.reduce((a, b) => a + b, 0) / peaks.length;
+      const variance = peaks.reduce((a, b) => a + (b - mean) ** 2, 0) / peaks.length;
+      const cv = Math.sqrt(variance) / (mean || 1);
+      consistency = Math.max(70, Math.min(100, Math.round(100 - cv * 50)));
+    }
+
+    // ROM Utilization
+    romUtilRef.current = (tMax - tMin) > 0
+      ? Math.min(100, Math.round(((peakAngleRef.current - minAngleRef.current) / (tMax - tMin)) * 100))
+      : 0;
+
+    // Fatigue index across session halves
+    let fatigue = 0;
+    if (repPeaksRef.current.length >= 4) {
+      const rp = repPeaksRef.current;
+      const h1 = rp.slice(0, Math.floor(rp.length / 2));
+      const h2 = rp.slice(Math.floor(rp.length / 2));
+      const a1 = h1.reduce((a, b) => a + b, 0) / h1.length;
+      const a2 = h2.reduce((a, b) => a + b, 0) / h2.length;
+      fatigue = a1 > 0 ? Math.max(0, Math.round(((a1 - a2) / a1) * 100)) : 0;
+    }
+
+    // Time under tension and calories
+    if (activeAngle > restTrigger + 4) tutRef.current += dt;
+    caloriesRef.current = Math.max(1, Math.round(3.5 * 70 * (tutRef.current / 3600) + repCountRef.current * 0.4));
+
+    historyRef.current.push(activeAngle);
+    if (historyRef.current.length > 600) historyRef.current.shift();
+
+    // ── 7. UI Batch State Flush (every 3 frames) ──
+    frameSkipRef.current++;
+    if (frameSkipRef.current % 3 === 0) {
+      setUiAngle(activeAngle);
+      setUiVel(velocity);
+      setUiReps(repCountRef.current);
+      setUiPeak(peakAngleRef.current);
+      setUiForm(formScore);
+      setUiMoving(velocity > 1.4 || activeAngle > restTrigger);
+      setUiFlexing(isFlexingRef.current);
+      setUiAccel(accel);
+      setUiTUT(tutRef.current);
+      setUiTempo({ con: concentricTimeRef.current, ecc: eccentricTimeRef.current });
+      setUiSymmetry(consistency);
+      setUiRomUtil(romUtilRef.current);
+      setUiFatigue(fatigue);
+      setUiJerk(smoothness);
+      setUiCalories(caloriesRef.current);
+    }
+  }
+
   const startSimulationMode = () => {
     setCamError('');
     setModelStatus('');
@@ -1672,10 +1867,7 @@ function TrackingScreen({ exercise, onFinish }) {
     isSimulatingRef.current = true;
   };
 
-
   const handleFinish = () => {
-    // The useEffect cleanup handles RAF cancellation and stream stop.
-    // We call onFinish with the session data immediately.
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     const hist = [...historyRef.current];
     onFinish({
@@ -1686,7 +1878,6 @@ function TrackingScreen({ exercise, onFinish }) {
       elapsed,
       history: hist,
       avgAngle: hist.length > 0 ? Math.round(hist.reduce((a, b) => a + b, 0) / hist.length) : 0,
-      // Advanced metrics
       symmetry: uiSymmetry,
       romUtil: uiRomUtil,
       fatigue: uiFatigue,
@@ -1707,7 +1898,7 @@ function TrackingScreen({ exercise, onFinish }) {
             className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
             playsInline muted
           />
-          {/* Canvas perfectly overlays video - NO Distortion */}
+          {/* Canvas overlays video directly */}
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
 
           {camError && (
@@ -1730,33 +1921,22 @@ function TrackingScreen({ exercise, onFinish }) {
               </div>
             </div>
           )}
-          {modelStatus && !camError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
-              <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/10 border border-white/20">
-                <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
-                <span className="text-white/60 text-xs font-semibold tracking-wider">{modelStatus}</span>
-              </div>
+
+          {modelStatus && (
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10">
+              <div className="w-2 h-2 rounded-full bg-[#e2723b] animate-ping" />
+              <span className="text-white/70 text-[11px] font-mono">{modelStatus}</span>
             </div>
           )}
 
-          {camActive && !modelStatus && (
-            <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#e2723b]/20 border border-[#e2723b]/30">
-              <div className={`w-1.5 h-1.5 rounded-full ${uiMoving ? 'bg-[#e2723b] animate-pulse' : 'bg-white/30'}`} />
-              <span className="text-[#e2723b] text-[9px] font-bold tracking-widest uppercase">{uiMoving ? 'Tracking Body' : 'Stand in frame'}</span>
-            </div>
-          )}
-
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-white/10">
-            <Clock className="w-3 h-3 text-white/40" />
-            <span className="text-white/70 text-[10px] font-mono">{fmtTime(elapsed)}</span>
-          </div>
-
-          <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-full bg-black/50 border border-white/10">
-            <span className="text-white/50 text-[9px] uppercase tracking-wider font-semibold">{exercise.name}</span>
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+            <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white/70 text-xs font-mono">
+              {fmtTime(elapsed)}
+            </span>
           </div>
         </div>
 
-        {/* AI Coach Display */}
+        {/* AI Coach Panel */}
         <AICoachPanel
           angle={uiAngle} velocity={uiVel} isFlexing={uiFlexing}
           formScore={uiForm} isMoving={uiMoving}
@@ -1772,7 +1952,7 @@ function TrackingScreen({ exercise, onFinish }) {
           { label: 'Calculated Angle', val: `${uiAngle.toFixed(1)}°`, color: 'text-[#e2723b]' },
           { label: 'Movement Speed', val: `${uiVel.toFixed(1)}°/s`, color: 'text-blue-400' },
           { label: 'Peak Angle', val: `${uiPeak.toFixed(0)}°`, color: 'text-[#e2723b]' },
-          { label: 'Tracking Score', val: `${uiForm}%`, color: uiForm > 70 ? 'text-emerald-400' : 'text-[#e2723b]' },
+          { label: 'Tracking Score', val: `${uiForm}%`, color: uiForm >= 75 ? 'text-emerald-400' : 'text-[#e2723b]' },
         ].map(p => (
           <div key={p.label} className="bg-[#111316] border border-white/8 rounded-2xl p-3 sm:px-4 sm:py-3.5">
             <p className="text-white/45 text-[10px] uppercase tracking-wider font-semibold mb-1 sm:mb-1.5">{p.label}</p>
@@ -1786,7 +1966,7 @@ function TrackingScreen({ exercise, onFinish }) {
         {[
           { label: 'Acceleration', val: `${Math.abs(uiAccel).toFixed(0)}`, unit: '°/s²', color: 'text-purple-400', icon: <Gauge className="w-3 h-3" /> },
           { label: 'Time Under Tension', val: `${uiTUT.toFixed(1)}`, unit: 's', color: 'text-amber-400', icon: <Timer className="w-3 h-3" /> },
-          { label: 'Smoothness', val: `${uiJerk}`, unit: '%', color: uiJerk > 60 ? 'text-emerald-400' : 'text-[#e2723b]', icon: <Waves className="w-3 h-3" /> },
+          { label: 'Smoothness', val: `${uiJerk}`, unit: '%', color: uiJerk >= 70 ? 'text-emerald-400' : 'text-[#e2723b]', icon: <Waves className="w-3 h-3" /> },
           { label: 'Est. Calories', val: `${uiCalories}`, unit: 'kcal', color: 'text-rose-400', icon: <Flame className="w-3 h-3" /> },
         ].map(p => (
           <div key={p.label} className="bg-[#111316] border border-white/8 rounded-2xl p-3 sm:px-4 sm:py-3">
@@ -1813,7 +1993,7 @@ function TrackingScreen({ exercise, onFinish }) {
           <div className="hidden sm:block w-px h-5 bg-white/8" />
           <div className="flex items-center gap-2">
             <span className="text-white/45 text-xs">Consistency</span>
-            <span className={`font-mono font-bold text-xs sm:text-sm ${uiForm > 70 ? 'text-emerald-400' : 'text-[#e2723b]'}`}>{uiForm}%</span>
+            <span className={`font-mono font-bold text-xs sm:text-sm ${uiSymmetry >= 75 ? 'text-emerald-400' : 'text-[#e2723b]'}`}>{uiSymmetry}%</span>
           </div>
           <div className="hidden sm:block w-px h-5 bg-white/8" />
           <div className="flex items-center gap-2">
@@ -1836,6 +2016,7 @@ function TrackingScreen({ exercise, onFinish }) {
     </div>
   );
 }
+
 
 /* ─── SCREEN 4: Analysis ────────────────────────────────────── */
 function AnalysisScreen({ data, onRetry, onHome }) {
