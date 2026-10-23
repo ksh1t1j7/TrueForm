@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 
 import SplashCursor from './SplashCursor';
-import FoodScanner from './FoodScanner';
 
 // TensorFlow.js from Global Scope (loaded via CDN in index.html)
 // NOTE: Read dynamically inside functions to avoid race conditions with CDN load timing.
@@ -340,25 +339,12 @@ function calcAngle3P(p1, p2, p3) {
 const EXERCISES = [
   {
     id: 'head_rotation',
-    name: 'Head Rotation',
+    name: 'Cervical Mobility',
     icon: 'rotate',
     targetRange: { min: 45, max: 80 },
     unit: '°',
-    description: 'Horizontal yaw sweep targeting cervical spine mobility. Tracks lateral head movement and rotation angle.',
+    description: 'Horizontal yaw sweep targeting cervical spine mobility. Tracks lateral head movement and rotation angle via real-time skeletal inference.',
     tags: ['Neck', 'Mobility', 'Cervical'],
-  },
-  {
-    id: 'arm_rotation',
-    name: 'Arm Rotation',
-    icon: 'activity',
-    targetRange: { min: 90, max: 150 },
-    unit: '°',
-    description: 'Glenohumeral joint orbit tracking for shoulder range of motion and extension assessment.',
-    tags: ['Shoulder', 'Extension', 'Upper Body'],
-    // Primary joints: hip → shoulder → elbow (angle at shoulder)
-    // Bilateral: both sides listed; inference picks the side with better confidence
-    joints: ['left_hip', 'left_shoulder', 'left_elbow'],
-    jointsAlt: ['right_hip', 'right_shoulder', 'right_elbow'],
   },
 ];
 
@@ -1473,13 +1459,7 @@ function TrackingScreen({ exercise, onFinish }) {
       offscreen.height = 256;
       const offCtx = offscreen.getContext('2d');
 
-      // Helper: angle of shoulder→elbow from straight-down vertical
-      // 0° = arm hanging down, 90° = horizontal, 170° = overhead
-      function armAngle(shoulder, elbow) {
-        const dx = elbow.x - shoulder.x;
-        const dy = elbow.y - shoulder.y; // +y = down in image coords
-        return Math.min(Math.abs((Math.atan2(dx, dy) * 180) / Math.PI), 175);
-      }
+
 
       const loop = async () => {
         if (cancelled) return;
@@ -1533,18 +1513,6 @@ function TrackingScreen({ exercise, onFinish }) {
                 calculatedAngle = Math.min((dx / (earDist / 1.5)) * 90, 95);
                 isUserMoving = true;
               }
-            } else if (exercise.id === 'arm_rotation') {
-              const lS = kMap.left_shoulder, lE = kMap.left_elbow;
-              const rS = kMap.right_shoulder, rE = kMap.right_elbow;
-              // Require BOTH shoulder+elbow to compute a meaningful angle
-              const lPair = lS && lE;
-              const rPair = rS && rE;
-              const lA = lPair ? armAngle(lS, lE) : -1;
-              const rA = rPair ? armAngle(rS, rE) : -1;
-              if (lPair || rPair) {
-                calculatedAngle = Math.max(lA < 0 ? 0 : lA, rA < 0 ? 0 : rA);
-                isUserMoving = true;
-              }
             } else {
               const j  = exercise.joints || [];
               const p1 = kMap[j[0]], p2 = kMap[j[1]], p3 = kMap[j[2]];
@@ -1578,19 +1546,6 @@ function TrackingScreen({ exercise, onFinish }) {
             bone('right_shoulder', 'right_hip',      'rgba(255,255,255,0.25)', 2);
             bone('left_hip',       'right_hip',      'rgba(255,255,255,0.25)', 2);
 
-            // Dashed reference line from shoulders (arm rotation)
-            if (exercise.id === 'arm_rotation') {
-              ['left_shoulder', 'right_shoulder'].forEach(name => {
-                const s = kMap[name];
-                if (!s) return;
-                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([4, 4]);
-                ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y + 120);
-                ctx.stroke();
-                ctx.setLineDash([]);
-              });
-            }
 
             // ── Draw ALL keypoints (no threshold skip) ───────────────
             kps.forEach(k => {
@@ -1613,7 +1568,7 @@ function TrackingScreen({ exercise, onFinish }) {
             prevTimeRef.current = now;
 
             const peakLimit = exercise.targetRange.min;
-            const restLimit = exercise.id === 'head_rotation' ? 20 : 30;
+            const restLimit = 20; // cervical neutral threshold
 
             if (activeAngle > currentRepPeakRef.current) currentRepPeakRef.current = activeAngle;
             if (activeAngle < minAngleRef.current)       minAngleRef.current       = activeAngle;
@@ -2005,22 +1960,107 @@ function AnalysisScreen({ data, onRetry, onHome }) {
 }
 
 /* ─── SCREEN 5: Predictive Nutritional Intelligence Hub ────── */
+/* ── Gemini Vision Meal Analysis Helper ──────────────────────── */
+const GEMINI_KEY = 'AIzaSyD8vW6wMuKqLKiSUuCflZRcSzm7bfS0mMM';
+const MEAL_PROMPT = `You are a clinical nutritionist. Analyze this food image.
+
+Respond ONLY with a JSON object (no markdown, no code fences):
+{
+  "identifiedFood": "Name of the dish",
+  "confidence": 0.94,
+  "servingSize": "1 plate (~320g)",
+  "estimatedCalories": 480,
+  "macros": { "protein": 32, "carbs": 48, "fats": 16, "fiber": 6 },
+  "glycemicIndexCategory": "Medium",
+  "metabolicInsights": [
+    "Rich in complete protein — supports lean mass maintenance",
+    "Moderate glycemic load — pair with leafy greens to attenuate glucose spike"
+  ]
+}
+
+glycemicIndexCategory must be exactly "Low", "Medium", or "High".
+Be accurate with calorie and macro estimates.`;
+
+const FALLBACK_MEALS = [
+  { identifiedFood: 'Grilled Chicken & Quinoa Salad', confidence: 0.91, servingSize: '1 bowl (~350g)', estimatedCalories: 420, macros: { protein: 38, carbs: 42, fats: 12, fiber: 8 }, glycemicIndexCategory: 'Low', metabolicInsights: ['Complete amino acid profile from quinoa + chicken', 'Low glycemic load — ideal for insulin-sensitive phenotypes', 'High fiber content supports postprandial satiety signaling'] },
+  { identifiedFood: 'Oatmeal with Almonds & Berries', confidence: 0.88, servingSize: '1 bowl (~280g)', estimatedCalories: 380, macros: { protein: 14, carbs: 52, fats: 14, fiber: 9 }, glycemicIndexCategory: 'Medium', metabolicInsights: ['Beta-glucans in oats reduce LDL cholesterol absorption', 'Anthocyanins from berries provide cardiovascular polyphenol benefits', 'Moderate GI — optimal for morning cortisol-driven glycogen refill'] },
+  { identifiedFood: 'Brown Rice & Lentil Bowl', confidence: 0.90, servingSize: '1 plate (~400g)', estimatedCalories: 510, macros: { protein: 22, carbs: 78, fats: 8, fiber: 14 }, glycemicIndexCategory: 'Medium', metabolicInsights: ['High resistant starch content improves gut microbiome diversity', 'Complete plant-based amino acid profile via rice-lentil complementation', 'Elevated fiber may reduce postprandial TG elevation by 15-20%'] },
+  { identifiedFood: 'Grilled Salmon & Steamed Vegetables', confidence: 0.93, servingSize: '1 plate (~300g)', estimatedCalories: 450, macros: { protein: 36, carbs: 18, fats: 26, fiber: 5 }, glycemicIndexCategory: 'Low', metabolicInsights: ['2.5g EPA/DHA per serving — suppresses hepatic VLDL output', 'Low carb density ideal for TG/HDL ratio optimization', 'Astaxanthin in salmon provides potent mitochondrial antioxidant protection'] },
+];
+
+async function analyzeMealImage(base64Data, mimeType) {
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: MEAL_PROMPT },
+            { inline_data: { mime_type: mimeType, data: base64Data } }
+          ]}],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        })
+      }
+    );
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
+    const data = await resp.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('No JSON');
+    return JSON.parse(m[0]);
+  } catch {
+    // Deterministic fallback — pick based on image size hash
+    const hash = base64Data.length % FALLBACK_MEALS.length;
+    return { ...FALLBACK_MEALS[hash], _fallback: true };
+  }
+}
+
 function PredictiveNutritionHub() {
   // Tab control
-  const [nutritionTab, setNutritionTab] = useState('biomarker'); // 'biomarker' | 'food'
+  const [nutritionTab, setNutritionTab] = useState('biomarker'); // 'biomarker' | 'meal'
 
-  // Input Biomarker State
+  // ── Meal Scanner State ──
+  const [mealImage, setMealImage] = useState(null);
+  const [mealMime, setMealMime] = useState('image/jpeg');
+  const [mealResult, setMealResult] = useState(null);
+  const [mealScanning, setMealScanning] = useState(false);
+  const [mealError, setMealError] = useState('');
+  const mealInputRef = useRef(null);
+
+  const scanMeal = useCallback(async (b64, mime) => {
+    setMealScanning(true); setMealError(''); setMealResult(null);
+    try {
+      const r = await analyzeMealImage(b64, mime);
+      setMealResult(r);
+    } catch (e) { setMealError(e.message || 'Analysis failed'); }
+    finally { setMealScanning(false); }
+  }, []);
+
+  const handleMealFile = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setMealError('Upload an image file (JPG, PNG, WebP)'); return; }
+    setMealError(''); setMealResult(null); setMealMime(file.type);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target.result;
+      setMealImage(url);
+      scanMeal(url.split(',')[1], file.type);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ── Biomarker State ──
   const [fastingGlucose, setFastingGlucose] = useState('95');
   const [triglycerides, setTriglycerides] = useState('125');
   const [hdlCholesterol, setHdlCholesterol] = useState('52');
   const [ldlCholesterol, setLdlCholesterol] = useState('98');
   const [hba1c, setHba1c] = useState('5.2');
-
-  // Diagnostics & Inference State
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
 
-  // Compute inference model predictions (FFNN & Random Forest logic)
+  // ── Metabolic Risk Inference Engine ──
   const runInference = useCallback((fg, tg, hdl, ldl, a1c) => {
     const glucose = parseFloat(fg) || 90;
     const trig = parseFloat(tg) || 120;
@@ -2028,155 +2068,73 @@ function PredictiveNutritionHub() {
     const ldlVal = parseFloat(ldl) || 100;
     const a1cVal = parseFloat(a1c) || 5.2;
 
-    // 1. Fasting Glucose Risk Component (70-99 optimal)
     let gScore = 10;
-    if (glucose > 99 && glucose <= 125) {
-      gScore = 30 + ((glucose - 99) / 26) * 40;
-    } else if (glucose > 125) {
-      gScore = 70 + Math.min(28, ((glucose - 125) / 50) * 28);
-    } else {
-      gScore = Math.max(5, ((glucose - 70) / 29) * 25);
-    }
+    if (glucose > 99 && glucose <= 125) gScore = 30 + ((glucose - 99) / 26) * 40;
+    else if (glucose > 125) gScore = 70 + Math.min(28, ((glucose - 125) / 50) * 28);
+    else gScore = Math.max(5, ((glucose - 70) / 29) * 25);
 
-    // 2. HbA1c Risk Component (< 5.7% optimal)
     let a1cScore = 10;
-    if (a1cVal >= 5.7 && a1cVal <= 6.4) {
-      a1cScore = 35 + ((a1cVal - 5.7) / 0.7) * 35;
-    } else if (a1cVal > 6.4) {
-      a1cScore = 70 + Math.min(28, ((a1cVal - 6.4) / 2.0) * 28);
-    } else {
-      a1cScore = Math.max(5, ((a1cVal - 4.5) / 1.2) * 25);
-    }
+    if (a1cVal >= 5.7 && a1cVal <= 6.4) a1cScore = 35 + ((a1cVal - 5.7) / 0.7) * 35;
+    else if (a1cVal > 6.4) a1cScore = 70 + Math.min(28, ((a1cVal - 6.4) / 2.0) * 28);
+    else a1cScore = Math.max(5, ((a1cVal - 4.5) / 1.2) * 25);
 
-    // 3. Triglyceride Risk Component (< 150 optimal)
     let tgScore = 15;
-    if (trig >= 150 && trig <= 199) {
-      tgScore = 35 + ((trig - 150) / 49) * 35;
-    } else if (trig > 199) {
-      tgScore = 70 + Math.min(28, ((trig - 199) / 150) * 28);
-    } else {
-      tgScore = Math.max(5, (trig / 150) * 25);
-    }
+    if (trig >= 150 && trig <= 199) tgScore = 35 + ((trig - 150) / 49) * 35;
+    else if (trig > 199) tgScore = 70 + Math.min(28, ((trig - 199) / 150) * 28);
+    else tgScore = Math.max(5, (trig / 150) * 25);
 
-    // 4. Lipid & Atherogenic Ratios
     const tgHdlRatio = trig / (hdlVal || 1);
     const aip = Math.log10(Math.max(0.1, tgHdlRatio));
     let ldlScore = ldlVal < 100 ? 12 : ldlVal < 130 ? 32 : ldlVal < 160 ? 62 : 88;
 
-    // 5. HOMA-IR Proxy & FFNN Neural Weighted Fusion
     const homaIr = (glucose * (trig / 2.5 + 10)) / 400;
-    
-    // FFNN Weighted Layer Sum
     const rawFfnnScore = (0.35 * gScore) + (0.30 * a1cScore) + (0.20 * tgScore) + (0.15 * ldlScore);
     const metabolicRiskIndex = Math.min(98, Math.max(4, Math.round(rawFfnnScore)));
 
-    // Random Forest 100 Trees Ensemble Vote
     const rfLowRiskVotes = Math.max(2, Math.min(98, Math.round(100 - metabolicRiskIndex)));
     const rfHighRiskVotes = 100 - rfLowRiskVotes;
 
-    // Risk Classification Tier
-    let riskTier = 'LOW RISK';
-    let riskColor = '#34d399'; // emerald-400
+    let riskTier = 'LOW RISK', riskColor = '#34d399';
     let riskBadgeBg = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
     let summaryText = 'Optimal metabolic flexibility detected. Biomarkers align with healthy glycemic control and lipid homeostasis.';
 
     if (metabolicRiskIndex >= 75) {
-      riskTier = 'HIGH RISK';
-      riskColor = '#ef4444'; // red-500
+      riskTier = 'HIGH RISK'; riskColor = '#ef4444';
       riskBadgeBg = 'bg-red-500/10 border-red-500/30 text-red-400';
       summaryText = 'Significant metabolic stress and potential insulin resistance phenotype detected. Immediate nutritional intervention recommended.';
     } else if (metabolicRiskIndex >= 50) {
-      riskTier = 'ELEVATED RISK';
-      riskColor = '#e2723b'; // terracotta
+      riskTier = 'ELEVATED RISK'; riskColor = '#e2723b';
       riskBadgeBg = 'bg-[#e2723b]/10 border-[#e2723b]/30 text-[#e2723b]';
       summaryText = 'Sub-optimal biomarkers indicating early dysmetabolism and glycemic volatility. Targeted dietary protocol required.';
     } else if (metabolicRiskIndex >= 25) {
-      riskTier = 'MODERATE RISK';
-      riskColor = '#facc15'; // amber-400
+      riskTier = 'MODERATE RISK'; riskColor = '#facc15';
       riskBadgeBg = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
       summaryText = 'Mild biomarker elevations detected. Minor nutritional & lifestyle adjustments recommended to restore homeostasis.';
     }
 
-    // Generate Targeted Recommendations based on biomarkers
     const recs = [];
-
     if (glucose > 99 || a1cVal >= 5.7) {
-      recs.push({
-        title: 'Glycemic Load Capping & Fiber Modulation',
-        category: 'GLYCEMIC CONTROL',
-        impact: 'CRITICAL',
-        icon: Zap,
-        color: '#e2723b',
-        detail: `Cap net carbohydrates to < 130g/day. Integrate 15g soluble fiber (psyllium husk, chia) prior to main meals to reduce postprandial glucose AUC.`
-      });
-      recs.push({
-        title: 'Postprandial GLUT4 Translocation Protocol',
-        category: 'TIMING & MOBILITY',
-        impact: 'HIGH',
-        icon: Activity,
-        color: '#38bdf8',
-        detail: 'Perform a 10-minute light walk or soleus push-ups immediately after carbohydrate-containing meals to activate non-insulin dependent glucose uptake.'
-      });
+      recs.push({ title: 'Glycemic Load Capping & Fiber Modulation', category: 'GLYCEMIC CONTROL', impact: 'CRITICAL', icon: Zap, color: '#e2723b', detail: `Cap net carbohydrates to < 130g/day. Integrate 15g soluble fiber (psyllium husk, chia) prior to main meals to reduce postprandial glucose AUC.` });
+      recs.push({ title: 'Postprandial GLUT4 Translocation Protocol', category: 'TIMING & MOBILITY', impact: 'HIGH', icon: Activity, color: '#38bdf8', detail: 'Perform a 10-minute light walk or soleus push-ups immediately after carbohydrate-containing meals to activate non-insulin dependent glucose uptake.' });
     }
-
     if (trig > 150 || tgHdlRatio > 3.0) {
-      recs.push({
-        title: 'Hepatic VLDL Suppression & Omega-3 EPA/DHA Stack',
-        category: 'LIPID METABOLISM',
-        impact: 'CRITICAL',
-        icon: Target,
-        color: '#facc15',
-        detail: `Triglyceride/HDL ratio is ${tgHdlRatio.toFixed(1)}. Supplement with 2,500mg purified EPA/DHA daily and eliminate refined liquid fructose.`
-      });
+      recs.push({ title: 'Hepatic VLDL Suppression & Omega-3 EPA/DHA Stack', category: 'LIPID METABOLISM', impact: 'CRITICAL', icon: Target, color: '#facc15', detail: `Triglyceride/HDL ratio is ${tgHdlRatio.toFixed(1)}. Supplement with 2,500mg purified EPA/DHA daily and eliminate refined liquid fructose.` });
     }
-
     if (hdlVal < 45 || aip > 0.24) {
-      recs.push({
-        title: 'Atherogenic Index Mitigation & Polyphenol Stack',
-        category: 'CARDIO-METABOLIC',
-        impact: 'HIGH',
-        icon: Shield,
-        color: '#a855f7',
-        detail: `Atherogenic Index of Plasma is ${aip.toFixed(2)}. Increase polyphenol-rich extra virgin olive oil (30mL/day) and wild-caught cold-water fish.`
-      });
+      recs.push({ title: 'Atherogenic Index Mitigation & Polyphenol Stack', category: 'CARDIO-METABOLIC', impact: 'HIGH', icon: Shield, color: '#a855f7', detail: `Atherogenic Index of Plasma is ${aip.toFixed(2)}. Increase polyphenol-rich extra virgin olive oil (30mL/day) and wild-caught cold-water fish.` });
     }
-
     if (ldlVal > 130) {
-      recs.push({
-        title: 'ApoB & LDL Particle Clearance Protocol',
-        category: 'LIPID PANEL',
-        impact: 'MODERATE',
-        icon: CheckCircle,
-        color: '#34d399',
-        detail: 'Replace saturated fats with monounsaturated fatty acids (avocado, macadamia) and target 10g viscous beta-glucans daily to upregulate hepatic LDL receptors.'
-      });
+      recs.push({ title: 'ApoB & LDL Particle Clearance Protocol', category: 'LIPID PANEL', impact: 'MODERATE', icon: CheckCircle, color: '#34d399', detail: 'Replace saturated fats with monounsaturated fatty acids (avocado, macadamia) and target 10g viscous beta-glucans daily to upregulate hepatic LDL receptors.' });
     }
-
-    // Default Baseline Rec if profile is optimal
     if (recs.length < 3) {
-      recs.push({
-        title: 'Mitochondrial Density & Micronutrient Maintenance',
-        category: 'LONGEVITY',
-        impact: 'OPTIMAL',
-        icon: CheckCircle,
-        color: '#34d399',
-        detail: 'Maintain current nutrient timing. Ensure 400mg elemental Magnesium Glycinate and 2,000 IU D3 + K2 daily for optimal cellular bioenergetics.'
-      });
-      recs.push({
-        title: 'Zone-2 Aerobic & Metabolic Flexibility Protocol',
-        category: 'PHYSICAL CONDITIONING',
-        impact: 'MAINTENANCE',
-        icon: TrendingUp,
-        color: '#38bdf8',
-        detail: 'Incorporate 150-180 minutes per week of Zone-2 aerobic exercise to maximize mitochondrial fat oxidation capacity.'
-      });
+      recs.push({ title: 'Mitochondrial Density & Micronutrient Maintenance', category: 'LONGEVITY', impact: 'OPTIMAL', icon: CheckCircle, color: '#34d399', detail: 'Maintain current nutrient timing. Ensure 400mg elemental Magnesium Glycinate and 2,000 IU D3 + K2 daily for optimal cellular bioenergetics.' });
+      recs.push({ title: 'Zone-2 Aerobic & Metabolic Flexibility Protocol', category: 'PHYSICAL CONDITIONING', impact: 'MAINTENANCE', icon: TrendingUp, color: '#38bdf8', detail: 'Incorporate 150-180 minutes per week of Zone-2 aerobic exercise to maximize mitochondrial fat oxidation capacity.' });
     }
 
     return {
       glucose, trig, hdlVal, ldlVal, a1cVal,
       tgHdlRatio, aip, homaIr,
-      metabolicRiskIndex,
-      rfLowRiskVotes, rfHighRiskVotes,
+      metabolicRiskIndex, rfLowRiskVotes, rfHighRiskVotes,
       riskTier, riskColor, riskBadgeBg, summaryText,
       recommendations: recs,
       ffnnLayers: {
@@ -2187,7 +2145,6 @@ function PredictiveNutritionHub() {
     };
   }, []);
 
-  // Initial calculation on load
   useEffect(() => {
     setDiagnostics(runInference(fastingGlucose, triglycerides, hdlCholesterol, ldlCholesterol, hba1c));
   }, [runInference]);
@@ -2202,11 +2159,8 @@ function PredictiveNutritionHub() {
   };
 
   const applyPreset = (fg, tg, hdl, ldl, a1c) => {
-    setFastingGlucose(String(fg));
-    setTriglycerides(String(tg));
-    setHdlCholesterol(String(hdl));
-    setLdlCholesterol(String(ldl));
-    setHba1c(String(a1c));
+    setFastingGlucose(String(fg)); setTriglycerides(String(tg));
+    setHdlCholesterol(String(hdl)); setLdlCholesterol(String(ldl)); setHba1c(String(a1c));
     setIsEvaluating(true);
     setTimeout(() => {
       setDiagnostics(runInference(fg, tg, hdl, ldl, a1c));
@@ -2214,37 +2168,272 @@ function PredictiveNutritionHub() {
     }, 250);
   };
 
+  // ── Cross-correlate meal with metabolic profile ──
+  const getMealMetabolicFlags = (meal, diag) => {
+    if (!meal || !diag) return [];
+    const flags = [];
+    const gi = meal.glycemicIndexCategory;
+    if (gi === 'High' && diag.glucose > 99) flags.push({ severity: 'critical', text: `High-glycemic meal conflicts with elevated fasting glucose (${diag.glucose} mg/dL). Risk of postprandial hyperglycemia. Consider replacing refined carbs with resistant starch sources.` });
+    if (gi === 'High' && diag.a1cVal >= 5.7) flags.push({ severity: 'critical', text: `HbA1c ${diag.a1cVal}% indicates pre-diabetic glycemic control. This high-GI meal may cause glucose excursions > 180 mg/dL. Pair with 10g soluble fiber and a 15-min post-meal walk.` });
+    if (gi === 'Medium' && diag.glucose > 99) flags.push({ severity: 'warning', text: `Medium glycemic load with borderline fasting glucose. Monitor 2-hour postprandial glucose — target < 140 mg/dL.` });
+    if (meal.macros.fats > 25 && diag.tgHdlRatio > 3.0) flags.push({ severity: 'warning', text: `High fat content (${meal.macros.fats}g) with elevated TG/HDL ratio (${diag.tgHdlRatio.toFixed(1)}). May exacerbate atherogenic dyslipidemia. Prioritize omega-3 over saturated fat sources.` });
+    if (meal.estimatedCalories > 600 && diag.metabolicRiskIndex > 50) flags.push({ severity: 'warning', text: `High caloric density (${meal.estimatedCalories} kcal) relative to metabolic risk profile. Consider reducing portion size by 20-25% or increasing dietary fiber to stabilize postprandial glucose levels.` });
+    if (meal.macros.fiber >= 8 && gi !== 'High') flags.push({ severity: 'positive', text: `Adequate fiber intake (${meal.macros.fiber}g) will attenuate glycemic response and support gut microbiome-mediated bile acid metabolism.` });
+    if (meal.macros.protein >= 25) flags.push({ severity: 'positive', text: `High protein content (${meal.macros.protein}g) supports glucagon-mediated hepatic glucose regulation and lean mass preservation.` });
+    if (flags.length === 0) flags.push({ severity: 'positive', text: 'This meal aligns well with your current metabolic profile. No adverse glycemic or lipid interactions detected.' });
+    return flags;
+  };
+
+  const totalMacroG = mealResult ? (mealResult.macros.protein + mealResult.macros.carbs + mealResult.macros.fats) : 1;
+  const proteinPct = mealResult ? Math.round((mealResult.macros.protein / totalMacroG) * 100) : 0;
+  const carbsPct   = mealResult ? Math.round((mealResult.macros.carbs   / totalMacroG) * 100) : 0;
+  const fatsPct    = mealResult ? Math.round((mealResult.macros.fats    / totalMacroG) * 100) : 0;
+
   return (
     <div className="relative z-10 flex-1 flex flex-col gap-6 px-4 md:px-8 pt-20 pb-4 md:pb-6 overflow-y-auto max-w-7xl mx-auto w-full select-none">
 
       {/* ── Tab Switcher ── */}
       <div className="flex gap-2 bg-[#111316]/80 border border-white/8 rounded-2xl p-1.5 backdrop-blur-xl self-start">
-        <button
-          onClick={() => setNutritionTab('biomarker')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            nutritionTab === 'biomarker'
-              ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25'
-              : 'text-white/50 hover:text-white/80'
-          }`}
-        >
+        <button onClick={() => setNutritionTab('biomarker')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${nutritionTab === 'biomarker' ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25' : 'text-white/50 hover:text-white/80'}`}>
           <Brain className="w-3.5 h-3.5" /> Biomarker Analysis
         </button>
-        <button
-          onClick={() => setNutritionTab('food')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            nutritionTab === 'food'
-              ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25'
-              : 'text-white/50 hover:text-white/80'
-          }`}
-        >
-          <Camera className="w-3.5 h-3.5" /> Food Scanner
+        <button onClick={() => setNutritionTab('meal')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${nutritionTab === 'meal' ? 'bg-[#e2723b] text-white shadow-lg shadow-[#e2723b]/25' : 'text-white/50 hover:text-white/80'}`}>
+          <Camera className="w-3.5 h-3.5" /> Meal Scanner
         </button>
       </div>
 
-      {/* ── Food Scanner Tab ── */}
-      {nutritionTab === 'food' && <FoodScanner />}
+      {/* ════════════════════════════════════════════════════════════
+           MEAL SCANNER TAB
+         ════════════════════════════════════════════════════════════ */}
+      {nutritionTab === 'meal' && (
+        <div className="flex flex-col gap-6">
 
-      {/* ── Biomarker Tab ── */}
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#111316]/90 border border-white/8 rounded-3xl p-5 md:p-6 backdrop-blur-xl">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                </div>
+                <span className="text-[#e2723b] text-[11px] font-mono tracking-widest uppercase font-bold">
+                  Gemini 2.0 Flash Vision · Metabolic Cross-Correlation
+                </span>
+              </div>
+              <h2 className="text-white text-2xl md:text-3xl font-extrabold tracking-tight">AI Meal Nutrition Scanner</h2>
+              <p className="text-[#f4f3ef]/70 text-xs md:text-sm mt-1 max-w-2xl">
+                Upload a meal photo for vision-assisted caloric estimation, macro profiling, and real-time cross-correlation with your metabolic biomarkers.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 self-start md:self-center">
+              <div className="bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 text-right">
+                <p className="text-white/40 text-[9px] uppercase tracking-wider font-semibold">Vision Model</p>
+                <p className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Gemini 2.0 Flash</p>
+              </div>
+              <div className="bg-black/50 border border-white/10 rounded-2xl px-3 py-1 self-start">
+                <span className="text-white/30 text-[9px] font-mono">Client-Side Vision Ingestion</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            {/* ── LEFT: Upload Panel ── */}
+            <div className="lg:col-span-5 bg-[#111316]/80 border border-white/8 rounded-3xl p-5 md:p-6 backdrop-blur-xl flex flex-col gap-5 min-h-[340px]">
+              <div className="flex items-center gap-2 pb-3 border-b border-white/5">
+                <Upload className="w-4 h-4 text-[#e2723b]" />
+                <h3 className="text-white font-bold text-base">Upload Meal Snapshot</h3>
+              </div>
+
+              {/* Dropzone */}
+              <div
+                className="relative flex flex-col items-center justify-center gap-4 border-2 border-dashed border-white/10 hover:border-[#e2723b]/50 rounded-2xl p-6 cursor-pointer transition-all group min-h-[200px]"
+                onClick={() => mealInputRef.current?.click()}
+                onDrop={(e) => { e.preventDefault(); handleMealFile(e.dataTransfer.files?.[0]); }}
+                onDragOver={(e) => e.preventDefault()}
+              >
+                {mealImage ? (
+                  <div className="relative w-full">
+                    <img src={mealImage} alt="Meal" className="w-full max-h-52 object-contain rounded-xl" />
+                    {mealScanning && (
+                      <div className="absolute inset-0 rounded-xl overflow-hidden">
+                        <div className="absolute inset-x-0 h-0.5 bg-[#e2723b] animate-pulse" style={{ top: '50%', boxShadow: '0 0 20px 4px rgba(226,114,59,0.5)' }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-[#e2723b]/10 group-hover:border-[#e2723b]/30 transition-all">
+                      <Camera className="w-8 h-8 text-white/30 group-hover:text-[#e2723b]/70 transition-all" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-white font-semibold text-sm">Drop meal snapshot or click to browse</p>
+                      <p className="text-white/40 text-xs mt-1">.jpg · .png · .webp · Any meal or dish</p>
+                    </div>
+                  </>
+                )}
+                <input ref={mealInputRef} type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => handleMealFile(e.target.files?.[0])} />
+              </div>
+
+              {/* Action Buttons */}
+              {mealImage && !mealScanning && (
+                <div className="flex gap-2">
+                  <button onClick={() => mealInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-xs font-semibold transition-all cursor-pointer flex-1 justify-center">
+                    <RefreshCw className="w-3 h-3" /> Change Image
+                  </button>
+                  <button onClick={() => { const b = mealImage.split(',')[1]; scanMeal(b, mealMime); }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#e2723b] hover:bg-[#d15f2a] text-white text-xs font-bold transition-all cursor-pointer flex-1 justify-center shadow-lg shadow-[#e2723b]/20">
+                    <Brain className="w-3 h-3" /> Scan Meal & Analyze
+                  </button>
+                </div>
+              )}
+
+              {/* Scanning indicator */}
+              {mealScanning && (
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <div className="w-10 h-10 rounded-full border-2 border-[#e2723b]/30 border-t-[#e2723b] animate-spin" />
+                  <p className="text-white/60 text-sm font-semibold">Vision inference in progress...</p>
+                  <p className="text-white/30 text-xs">Classifying items · Estimating volume · Computing macros</p>
+                </div>
+              )}
+
+              {mealError && (
+                <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+                  <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-red-300 text-xs">{mealError}</p>
+                </div>
+              )}
+
+              {!mealImage && (
+                <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                  <p className="text-white/50 text-[10px] uppercase font-bold tracking-wider mb-2">Tips for best results</p>
+                  <ul className="text-white/40 text-xs space-y-1.5">
+                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-500/60 shrink-0" /> Clear, well-lit overhead or angled shot</li>
+                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-500/60 shrink-0" /> Single plate/bowl or individual food item</li>
+                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-500/60 shrink-0" /> Works with home-cooked, restaurant & packaged food</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* ── RIGHT: Telemetry Results ── */}
+            <div className="lg:col-span-7 flex flex-col gap-4">
+              {mealResult ? (
+                <>
+                  {/* Food ID + Calorie Hero */}
+                  <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-5 backdrop-blur-xl">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">Identified Meal</p>
+                          {mealResult._fallback && <span className="text-amber-400/70 text-[9px] font-mono border border-amber-400/20 rounded px-1.5 py-0.5">SIMULATED</span>}
+                        </div>
+                        <h3 className="text-white text-xl font-extrabold truncate">{mealResult.identifiedFood}</h3>
+                        <p className="text-white/50 text-xs mt-1">{mealResult.servingSize} · {(mealResult.confidence * 100).toFixed(0)}% confidence</p>
+                      </div>
+                      <div className="w-20 h-20 rounded-2xl bg-black/50 border border-[#e2723b]/30 flex flex-col items-center justify-center shrink-0">
+                        <span className="font-mono text-2xl font-extrabold text-[#e2723b]">{mealResult.estimatedCalories}</span>
+                        <span className="text-[9px] text-white/40 uppercase font-bold">kcal</span>
+                      </div>
+                    </div>
+
+                    {/* Macro Distribution Bar */}
+                    <div className="mb-3">
+                      <p className="text-white/40 text-[10px] uppercase tracking-wider font-bold mb-1.5">Macronutrient Distribution</p>
+                      <div className="h-3 rounded-full overflow-hidden flex bg-black/60 border border-white/5">
+                        <div className="h-full bg-cyan-400 transition-all" style={{ width: `${proteinPct}%` }} title={`Protein ${proteinPct}%`} />
+                        <div className="h-full bg-amber-400 transition-all" style={{ width: `${carbsPct}%` }} title={`Carbs ${carbsPct}%`} />
+                        <div className="h-full bg-[#e2723b] transition-all" style={{ width: `${fatsPct}%` }} title={`Fats ${fatsPct}%`} />
+                      </div>
+                      <div className="flex justify-between text-[10px] mt-1.5 font-semibold">
+                        <span className="text-cyan-400">Protein {proteinPct}%</span>
+                        <span className="text-amber-400">Carbs {carbsPct}%</span>
+                        <span className="text-[#e2723b]">Fats {fatsPct}%</span>
+                      </div>
+                    </div>
+
+                    {/* Macro Tiles */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { l: 'Protein', v: mealResult.macros.protein, u: 'g', c: '#38bdf8' },
+                        { l: 'Carbs', v: mealResult.macros.carbs, u: 'g', c: '#facc15' },
+                        { l: 'Fats', v: mealResult.macros.fats, u: 'g', c: '#e2723b' },
+                        { l: 'Fiber', v: mealResult.macros.fiber, u: 'g', c: '#34d399' },
+                      ].map(m => (
+                        <div key={m.l} className="bg-black/40 rounded-xl p-3 border border-white/5 text-center">
+                          <p className="text-white/40 text-[9px] uppercase font-semibold">{m.l}</p>
+                          <p className="font-mono font-extrabold text-lg" style={{ color: m.c }}>{m.v}</p>
+                          <p className="text-white/30 text-[9px]">{m.u}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Glycemic Index + Metabolic Insights */}
+                  <div className="bg-[#111316]/80 border border-white/8 rounded-2xl p-4 backdrop-blur-xl flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <p className="text-white/40 text-[10px] uppercase tracking-wider font-bold">Glycemic Index Classification</p>
+                      <span className={`rounded-lg px-2.5 py-0.5 text-[10px] font-bold border ${
+                        mealResult.glycemicIndexCategory === 'Low' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' :
+                        mealResult.glycemicIndexCategory === 'Medium' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
+                        'bg-red-500/15 text-red-400 border-red-500/20'
+                      }`}>{mealResult.glycemicIndexCategory} GI</span>
+                    </div>
+                    {mealResult.metabolicInsights?.map((ins, i) => (
+                      <p key={i} className="text-white/70 text-xs py-1 border-b border-white/5 last:border-0">✦ {ins}</p>
+                    ))}
+                  </div>
+
+                  {/* ── Metabolic Cross-Correlation Card ── */}
+                  {diagnostics && (
+                    <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-4 sm:p-5 backdrop-blur-xl flex flex-col gap-3">
+                      <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+                        <Dna className="w-4 h-4 text-[#e2723b]" />
+                        <div>
+                          <h4 className="text-white font-bold text-sm">Metabolic Cross-Correlation</h4>
+                          <p className="text-white/40 text-[10px]">Meal nutrition × your biomarker profile</p>
+                        </div>
+                      </div>
+                      {getMealMetabolicFlags(mealResult, diagnostics).map((flag, i) => (
+                        <div key={i} className={`flex items-start gap-2.5 rounded-xl p-3 border ${
+                          flag.severity === 'critical' ? 'bg-red-500/8 border-red-500/15' :
+                          flag.severity === 'warning' ? 'bg-amber-500/8 border-amber-500/15' :
+                          'bg-emerald-500/8 border-emerald-500/15'
+                        }`}>
+                          {flag.severity === 'critical' ? <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" /> :
+                           flag.severity === 'warning' ? <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" /> :
+                           <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />}
+                          <p className={`text-xs leading-relaxed ${
+                            flag.severity === 'critical' ? 'text-red-300/90' :
+                            flag.severity === 'warning' ? 'text-amber-300/90' :
+                            'text-emerald-300/90'
+                          }`}>{flag.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : !mealScanning && (
+                <div className="bg-[#111316]/80 border border-white/8 rounded-3xl p-8 backdrop-blur-xl flex flex-col items-center justify-center gap-4 text-center min-h-[340px]">
+                  <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10">
+                    <Apple className="w-8 h-8 text-white/20" />
+                  </div>
+                  <p className="text-white/50 font-semibold text-sm">No meal analyzed yet</p>
+                  <p className="text-white/30 text-xs">Upload a food photo to get AI-powered nutritional telemetry<br />and metabolic compatibility analysis</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+           BIOMARKER TAB (existing content preserved)
+         ════════════════════════════════════════════════════════════ */}
       {nutritionTab === 'biomarker' && <>
 
       {/* Header Banner */}
@@ -2295,32 +2484,20 @@ function PredictiveNutritionHub() {
           <div>
             <p className="text-white/40 text-[10px] uppercase tracking-wider font-bold mb-2">Quick Lab Profiles</p>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => applyPreset(88, 92, 62, 95, 5.1)}
-                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-emerald-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-emerald-500/30"
-              >
+              <button type="button" onClick={() => applyPreset(88, 92, 62, 95, 5.1)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-emerald-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-emerald-500/30">
                 Optimal Profile
               </button>
-              <button
-                type="button"
-                onClick={() => applyPreset(114, 168, 42, 128, 6.1)}
-                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-amber-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-amber-500/30"
-              >
+              <button type="button" onClick={() => applyPreset(114, 168, 42, 128, 6.1)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-amber-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-amber-500/30">
                 Pre-Diabetic Risk
               </button>
-              <button
-                type="button"
-                onClick={() => applyPreset(132, 245, 36, 162, 6.8)}
-                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[#e2723b] text-left text-xs font-semibold transition-all cursor-pointer hover:border-[#e2723b]/30"
-              >
+              <button type="button" onClick={() => applyPreset(132, 245, 36, 162, 6.8)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[#e2723b] text-left text-xs font-semibold transition-all cursor-pointer hover:border-[#e2723b]/30">
                 Atherogenic Dyslip.
               </button>
-              <button
-                type="button"
-                onClick={() => applyPreset(108, 190, 39, 145, 5.9)}
-                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-red-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-red-500/30"
-              >
+              <button type="button" onClick={() => applyPreset(108, 190, 39, 145, 5.9)}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-red-400 text-left text-xs font-semibold transition-all cursor-pointer hover:border-red-500/30">
                 Insulin Resistant
               </button>
             </div>
@@ -2328,123 +2505,33 @@ function PredictiveNutritionHub() {
 
           {/* Form Controls */}
           <form onSubmit={handleRunDiagnostics} className="flex flex-col gap-4">
-            
-            {/* 1. Fasting Glucose */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[#f4f3ef] text-xs font-bold">Fasting Blood Glucose</label>
-                <span className="text-white/40 text-[10px]">Ref: 70–99 mg/dL</span>
+            {[
+              { label: 'Fasting Blood Glucose', ref: '70–99 mg/dL', unit: 'mg/dL', val: fastingGlucose, set: setFastingGlucose, step: '1', ph: '95' },
+              { label: 'Serum Triglycerides', ref: '< 150 mg/dL', unit: 'mg/dL', val: triglycerides, set: setTriglycerides, step: '1', ph: '125' },
+              { label: 'HDL Cholesterol', ref: '> 45 mg/dL', unit: 'mg/dL', val: hdlCholesterol, set: setHdlCholesterol, step: '1', ph: '52' },
+              { label: 'LDL Cholesterol', ref: '< 100 mg/dL', unit: 'mg/dL', val: ldlCholesterol, set: setLdlCholesterol, step: '1', ph: '98' },
+              { label: 'Glycated Hemoglobin (HbA1c)', ref: '< 5.7%', unit: '%', val: hba1c, set: setHba1c, step: '0.1', ph: '5.2' },
+            ].map(f => (
+              <div key={f.label} className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[#f4f3ef] text-xs font-bold">{f.label}</label>
+                  <span className="text-white/40 text-[10px]">Ref: {f.ref}</span>
+                </div>
+                <div className="relative">
+                  <input type="number" step={f.step} value={f.val} onChange={(e) => f.set(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
+                    placeholder={f.ph} required />
+                  <span className="absolute right-3 top-3 text-white/30 text-xs">{f.unit}</span>
+                </div>
               </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="1"
-                  value={fastingGlucose}
-                  onChange={(e) => setFastingGlucose(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
-                  placeholder="95"
-                  required
-                />
-                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
-              </div>
-            </div>
+            ))}
 
-            {/* 2. Serum Triglycerides */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[#f4f3ef] text-xs font-bold">Serum Triglycerides</label>
-                <span className="text-white/40 text-[10px]">Ref: &lt; 150 mg/dL</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="1"
-                  value={triglycerides}
-                  onChange={(e) => setTriglycerides(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
-                  placeholder="125"
-                  required
-                />
-                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
-              </div>
-            </div>
-
-            {/* 3. HDL Cholesterol */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[#f4f3ef] text-xs font-bold">HDL Cholesterol</label>
-                <span className="text-white/40 text-[10px]">Ref: &gt; 45 mg/dL</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="1"
-                  value={hdlCholesterol}
-                  onChange={(e) => setHdlCholesterol(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
-                  placeholder="52"
-                  required
-                />
-                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
-              </div>
-            </div>
-
-            {/* 4. LDL Cholesterol */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[#f4f3ef] text-xs font-bold">LDL Cholesterol</label>
-                <span className="text-white/40 text-[10px]">Ref: &lt; 100 mg/dL</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="1"
-                  value={ldlCholesterol}
-                  onChange={(e) => setLdlCholesterol(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
-                  placeholder="98"
-                  required
-                />
-                <span className="absolute right-3 top-3 text-white/30 text-xs">mg/dL</span>
-              </div>
-            </div>
-
-            {/* 5. HbA1c */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[#f4f3ef] text-xs font-bold">Glycated Hemoglobin (HbA1c)</label>
-                <span className="text-white/40 text-[10px]">Ref: &lt; 5.7%</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={hba1c}
-                  onChange={(e) => setHba1c(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 backdrop-blur-md text-white rounded-xl p-3 focus:border-[#e2723b] outline-none transition-all text-sm font-mono"
-                  placeholder="5.2"
-                  required
-                />
-                <span className="absolute right-3 top-3 text-white/30 text-xs">%</span>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isEvaluating}
-              className="mt-2 bg-[#e2723b] hover:bg-[#d15f2a] active:scale-[0.99] text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-[#e2723b]/25 flex items-center justify-center gap-2 cursor-pointer w-full"
-            >
+            <button type="submit" disabled={isEvaluating}
+              className="mt-2 bg-[#e2723b] hover:bg-[#d15f2a] active:scale-[0.99] text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-[#e2723b]/25 flex items-center justify-center gap-2 cursor-pointer w-full">
               {isEvaluating ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  <span>EXECUTING FFNN &amp; RF INFERENCE...</span>
-                </>
+                <><div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /><span>EXECUTING FFNN &amp; RF INFERENCE...</span></>
               ) : (
-                <>
-                  <Brain className="w-4 h-4" />
-                  <span>RUN DIAGNOSTICS</span>
-                </>
+                <><Brain className="w-4 h-4" /><span>RUN DIAGNOSTICS</span></>
               )}
             </button>
           </form>
@@ -2481,20 +2568,11 @@ function PredictiveNutritionHub() {
                       {diagnostics.metabolicRiskIndex} / 100
                     </span>
                   </div>
-                  {/* Gauge Bar */}
                   <div className="h-3 bg-black/60 rounded-full overflow-hidden border border-white/10 p-0.5 relative">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${diagnostics.metabolicRiskIndex}%`,
-                        backgroundColor: diagnostics.riskColor,
-                        boxShadow: `0 0 12px ${diagnostics.riskColor}66`
-                      }}
-                    />
+                    <div className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${diagnostics.metabolicRiskIndex}%`, backgroundColor: diagnostics.riskColor, boxShadow: `0 0 12px ${diagnostics.riskColor}66` }} />
                   </div>
-                  <p className="text-[#f4f3ef]/70 text-xs leading-relaxed mt-1">
-                    {diagnostics.summaryText}
-                  </p>
+                  <p className="text-[#f4f3ef]/70 text-xs leading-relaxed mt-1">{diagnostics.summaryText}</p>
                 </div>
               </div>
 
@@ -2505,13 +2583,11 @@ function PredictiveNutritionHub() {
                   <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.homaIr.toFixed(2)}</p>
                   <span className="text-[9px] text-white/40">{diagnostics.homaIr > 2.5 ? 'Elevated' : 'Optimal'}</span>
                 </div>
-
                 <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
                   <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">TG / HDL Ratio</p>
                   <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.tgHdlRatio.toFixed(2)}</p>
                   <span className="text-[9px] text-white/40">{diagnostics.tgHdlRatio > 3.0 ? 'High' : 'Normal'}</span>
                 </div>
-
                 <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
                   <p className="text-white/40 text-[9px] uppercase font-semibold mb-0.5">AIP Index</p>
                   <p className="text-white font-mono font-bold text-sm sm:text-base">{diagnostics.aip.toFixed(2)}</p>
@@ -2530,7 +2606,6 @@ function PredictiveNutritionHub() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Random Forest Ensemble Tree Votes */}
                 <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex flex-col justify-between gap-3">
                   <div>
                     <div className="flex justify-between text-xs mb-1">
@@ -2547,7 +2622,6 @@ function PredictiveNutritionHub() {
                     <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${diagnostics.rfLowRiskVotes}%` }} />
                     </div>
-
                     <div className="flex items-center justify-between text-[11px] pt-1">
                       <span className="text-[#e2723b] font-mono">Metabolic Stress</span>
                       <span className="text-white/70 font-mono">{diagnostics.rfHighRiskVotes}%</span>
@@ -2558,7 +2632,6 @@ function PredictiveNutritionHub() {
                   </div>
                 </div>
 
-                {/* FFNN Dense Activations */}
                 <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex flex-col justify-between gap-3">
                   <div>
                     <div className="flex justify-between text-xs mb-1">
@@ -2605,9 +2678,7 @@ function PredictiveNutritionHub() {
                             {rec.category}
                           </span>
                         </div>
-                        <p className="text-[#f4f3ef]/80 text-xs leading-relaxed">
-                          {rec.detail}
-                        </p>
+                        <p className="text-[#f4f3ef]/80 text-xs leading-relaxed">{rec.detail}</p>
                       </div>
                     </div>
                   );
